@@ -106,6 +106,22 @@ XML
     echo "Баннер для ТВ пересобран"
 }
 
+# Настройки Firebase: у каждого бренда свой файл, и он кладётся рядом
+# с приложением под именем, которое ждёт плагин. Нет файла — убираем
+# прежний, иначе сборка одного бренда утащит push другого.
+setup_firebase() {
+    local src="brands/$BRAND/google-services.json"
+    local dst="V2rayNG/app/google-services.json"
+
+    if [ -f "$src" ]; then
+        cp "$src" "$dst"
+        echo "Firebase: настройки бренда на месте"
+    else
+        rm -f "$dst"
+        echo "Firebase: у бренда нет настроек — push выключены"
+    fi
+}
+
 NAME=$(prop brand.name)
 APPID=$(prop brand.applicationId)
 BG=$(prop brand.color.background)
@@ -173,12 +189,14 @@ if [ -n "$ANDROID_ICONS" ] && [ -f "$ANDROID_ICONS/ic_launcher-xxxhdpi.png" ]; t
     echo "Иконки взяты готовыми из $ANDROID_ICONS"
     install_notification_icon
     install_tv_banner
+    setup_firebase
     exit 0
 fi
 
 # 3b. Иначе собираем все плотности из одного исходника.
 if [ ! -f "$ICON" ]; then
     echo "Иконка $ICON не найдена — прежние оставлены без изменений"
+    setup_firebase
     exit 0
 fi
 
@@ -266,3 +284,7 @@ PY
 
 install_notification_icon
 install_tv_banner
+
+# Настройки Firebase кладём последними: они не зависят от иконок, а
+# видеть их в хвосте вывода удобнее — сразу ясно, будет ли push.
+setup_firebase

@@ -169,8 +169,16 @@ class RenewViewModel(application: Application) : BaseViewModel(application) {
                 delay(POLL_INTERVAL_MS)
                 if (_uiState.value.state?.request?.isOpen != true) continue
 
+                val was = _uiState.value.state?.request?.status
                 val answer = MobileBackend.renewState(getApplication()) ?: continue
                 _uiState.update { it.copy(state = answer, offline = false) }
+
+                // Решение принято — подписка изменилась. Перечитываем её
+                // целиком, иначе главный экран показывал бы прежний срок
+                // до следующего запуска приложения.
+                if (answer.request?.isApproved == true && was != answer.request.status) {
+                    runCatching { MobileBackend.provision(getApplication(), claim = false) }
+                }
             }
         }
     }

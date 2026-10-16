@@ -771,6 +771,7 @@ object MobileBackend {
         val request: RenewRequest? = null,
     )
 
+    private const val PUSH_PATH = "/api/v1/push/register"
     private const val RENEW_PATH = "/api/v1/renew"
     private const val RENEW_RECEIPT_PATH = "/api/v1/renew/receipt"
 
@@ -789,6 +790,27 @@ object MobileBackend {
      * можно просто склеивать — выравнивающих знаков внутри не возникает.
      */
     private const val BASE64_CHUNK_BYTES = 3 * 64 * 1024
+
+    /**
+     * Сообщает бэкенду адрес этого телефона для push-уведомлений.
+     *
+     * Бэкенд отвечает отказом, если устройства он ещё не знает, — так
+     * бывает при самом первом запуске, до выдачи подписки. Ничего
+     * страшного: адрес уедет при следующем запуске.
+     */
+    suspend fun registerPush(context: Context, token: String): Boolean = withContext(Dispatchers.IO) {
+        val androidId = deviceId(context)
+        if (!isConfigured || androidId.isBlank()) return@withContext false
+
+        val answer = post(
+            PUSH_PATH,
+            mapOf("android_id" to androidId, "token" to token),
+            StatusOnly::class.java,
+        )
+        answer?.status == "ok"
+    }
+
+    private data class StatusOnly(val status: String? = null)
 
     /**
      * Экран подписки: срок, трафик, тарифы, судьба последнего чека.

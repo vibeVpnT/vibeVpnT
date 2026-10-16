@@ -39,6 +39,16 @@ fun brand(key: String): String = brandProps.getProperty(key)
 val brandSlug: String = (brandProps.getProperty("brand.slug") ?: brand("brand.name"))
     .lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
+// Плагин Firebase подключаем только тогда, когда у бренда есть его
+// настройки. Иначе сборка второго приложения падала бы на отсутствующем
+// google-services.json — а push ему могут быть и не нужны.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+    logger.lifecycle("Firebase: настройки найдены, push включены")
+} else {
+    logger.lifecycle("Firebase: google-services.json нет — push выключены")
+}
+
 android {
     namespace = "com.v2ray.ang"
     compileSdk = 37
@@ -188,6 +198,12 @@ android {
 }
 
 dependencies {
+    // Push-уведомления. Подключаются всегда, а работают только там, где
+    // рядом оказался google-services.json: без него Firebase не
+    // настроится, и приложение просто обойдётся без уведомлений.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+
     // Core Libraries
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
 

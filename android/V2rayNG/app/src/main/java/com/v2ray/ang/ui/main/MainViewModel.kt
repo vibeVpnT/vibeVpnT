@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.MobileBackend
+import com.v2ray.ang.handler.PushManager
 import com.v2ray.ang.handler.isProfileInUse
 import com.v2ray.ang.dto.ConnectionTestResult
 import com.v2ray.ang.dto.GroupMapItem
@@ -456,6 +457,11 @@ class MainViewModel(
                     },
                 )
             }
+
+            // Адрес для push: сообщаем его при каждом запуске. Firebase
+            // меняет его по своим причинам, а бэкенд должен знать
+            // нынешний — иначе уведомление уедет в никуда.
+            if (reachable) PushManager.register(getApplication())
 
             // Правила тянем молча: версия сверяется внутри, лишний раз
             // ничего не перекачивается.

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1076785580827",
+    "project_id": "vibevpn-cc017",
+    "storage_bucket": "vibevpn-cc017.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1076785580827:android:ea818aa13ba82e4bfb21be",
+        "android_client_info": {
+          "package_name": "online.tforge.proxyvv"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3LiJGdZ_9LbJUHY2iNJv5DrVrXdUFSoc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
