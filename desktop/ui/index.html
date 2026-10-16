@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>VibeVPN</title>
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Пока подписки нет, ничего, кроме входа, показывать нечего:
+     регистрации в приложении не существует. -->
+<div id="login" class="screen hidden">
+  <img class="logo" src="logo.png" alt="">
+  <h1>Вход по QR</h1>
+  <p class="hint">Откройте приложение на телефоне, где подписка уже есть,
+     нажмите «Добавить устройство» и отсканируйте этот код.</p>
+
+  <div id="login-empty">
+    <button class="primary" onclick="showCode()">Показать код</button>
+  </div>
+
+  <div id="login-code" class="hidden">
+    <img id="qr" alt="">
+    <div id="digits"></div>
+    <div id="expires" class="muted"></div>
+    <div class="waiting">Ждём сканирования…</div>
+    <button class="ghost" onclick="showCode()">Новый код</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <!-- Меню слева: на телефоне оно внизу, здесь места больше по бокам,
+       и глаз на большом экране начинает слева. -->
+  <nav>
+    <button class="nav active" data-tab="home" onclick="go('home')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" stroke-width="1.8" fill="none"/></svg>
+      <span>Главная</span>
+    </button>
+    <button class="nav" data-tab="servers" onclick="go('servers')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="4" width="18" height="7" rx="2" stroke-width="1.8" fill="none"/><rect x="3" y="13" width="18" height="7" rx="2" stroke-width="1.8" fill="none"/></svg>
+      <span>Серверы</span>
+    </button>
+    <button class="nav" data-tab="renew" onclick="go('renew')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke-width="1.8" fill="none"/><path d="M3 10h18" stroke-width="1.8" fill="none"/><path d="M6.5 14.5h4" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>
+      <span>Подписка</span>
+    </button>
+    <button class="nav" data-tab="settings" onclick="go('settings')">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="3.2" stroke-width="1.8" fill="none"/><path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6M18.4 18.4l-1.6-1.6M7.2 7.2L5.6 5.6" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+      <span>Настройки</span>
+    </button>
+  </nav>
+
+  <main>
+    <!-- Главная -->
+    <section id="tab-home" class="tab">
+      <img class="logo big" src="logo.png" alt="VibeVPN">
+      <button id="power" onclick="toggle()" aria-label="Подключение">
+        <svg viewBox="0 0 24 24" width="52" height="52">
+          <path d="M12 3v9" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+          <path d="M6.3 6.6a8 8 0 1 0 11.4 0" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+        </svg>
+      </button>
+      <div id="timer">00:00:00</div>
+      <div id="home-status" class="muted">Не подключено</div>
+      <div id="home-sub" class="muted small"></div>
+
+      <!-- Две вещи, которые переключают чаще всего. Подробности с
+           объяснениями остаются в настройках, здесь — только быстрый
+           доступ и видно, что включено. -->
+      <div class="chips">
+        <button class="chip" id="chip-vpn" onclick="toggleVPN()"
+                title="Весь трафик машины через туннель, а не только браузеры">
+          <span class="dot"></span><span>Режим VPN</span>
+        </button>
+        <button class="chip" id="chip-ru" onclick="toggleRu()"
+                title="Банки, госуслуги и доставка идут мимо туннеля">
+          <span class="dot"></span><span>Россия напрямую</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Серверы -->
+    <section id="tab-servers" class="tab hidden">
+      <div class="row top">
+        <div class="sort">
+          Сортировать по
+          <select id="sort" onchange="sortBy(this.value)">
+            <option value="ping">задержке</option>
+            <option value="name">имени</option>
+          </select>
+        </div>
+        <button class="ghost" onclick="pingAll()">Пинг всех</button>
+      </div>
+      <div id="servers"></div>
+      <div id="connect-panel" class="panel">
+        <div>
+          <div id="panel-title">Не подключено</div>
+          <div id="panel-sub" class="muted small"></div>
+        </div>
+        <button id="panel-btn" class="primary" onclick="toggle()">Подключить</button>
+      </div>
+    </section>
+
+    <!-- Подписка. Продление устроено как в боте: выбрать тариф,
+         заплатить и приложить чек. Начисляет его человек, который чек
+         смотрит, — или само, если он промолчит. -->
+    <section id="tab-renew" class="tab hidden">
+      <div class="card about">
+        <div>Моя подписка</div>
+        <div class="muted small" id="sub-left">Спрашиваю…</div>
+        <div class="muted small" id="sub-traffic"></div>
+        <div class="muted small" id="sub-key"></div>
+      </div>
+
+      <div id="renew-state" class="card about hidden">
+        <div id="renew-state-title"></div>
+        <div class="muted small" id="renew-state-text"></div>
+      </div>
+
+      <!-- Спрятан, пока сервер не ответил: пустой список тарифов под
+           заголовком «выберите, на сколько продлить» выглядит поломкой. -->
+      <div id="renew-pick" class="hidden">
+        <div class="muted small pick-hint">Выберите, на сколько продлить. Дни и
+          гигабайты прибавятся к тому, что уже есть:</div>
+        <div id="tiers"></div>
+      </div>
+
+      <div id="renew-pay" class="hidden">
+        <div class="card about">
+          <div id="pay-title"></div>
+          <div class="muted small" id="pay-how"></div>
+          <pre class="log muted small hidden" id="pay-requisites"></pre>
+        </div>
+        <div class="buttons">
+          <button class="primary" id="pay-open" onclick="openPay()">Перейти к оплате</button>
+          <button class="primary" onclick="pickReceipt()">Я оплатил, приложить чек</button>
+          <button class="ghost" onclick="backToTiers()">Назад</button>
+        </div>
+        <!-- Чеком может быть что угодно: снимок экрана, фотография,
+             pdf из банка. Картинку в Telegram видно сразу, остальное
+             уходит вложением — поэтому тип файла не ограничиваем. -->
+        <input type="file" id="receipt" class="hidden" onchange="uploadReceipt(this)">
+      </div>
+
+      <div id="renew-off" class="card about hidden">
+        <div>Продление сейчас недоступно</div>
+        <div class="muted small">Напишите в поддержку — продлят вручную.</div>
+      </div>
+    </section>
+
+    <!-- Настройки -->
+    <section id="tab-settings" class="tab hidden">
+      <!-- Два способа поймать трафик. Прокси берёт браузеры и всё, что
+           умеет спрашивать систему; режим VPN — вообще всё, но просит
+           пароль администратора. -->
+      <div class="card switch hidden" id="vpn-card" onclick="toggleVPN()">
+        <div>
+          <div>Режим VPN</div>
+          <div class="muted small">Через туннель пойдёт весь трафик машины,
+            а не только браузеры. При включении система спросит пароль
+            администратора.</div>
+        </div>
+        <span id="vpn-switch" class="toggle"></span>
+      </div>
+
+      <div class="card switch" onclick="toggleRu()">
+        <div>
+          <div>Российские сервисы напрямую</div>
+          <div class="muted small">Банки, госуслуги и доставка не пускают
+            адреса дата-центров — через сервер они не открываются.</div>
+        </div>
+        <span id="ru-switch" class="toggle"></span>
+      </div>
+
+      <div class="card" onclick="refresh()">
+        <div>Обновить подписку</div>
+        <div class="muted small">Перечитать список серверов и правила</div>
+      </div>
+
+      <div class="card about">
+        <div>О приложении</div>
+        <div class="muted small"><span id="brand"></span> для <span id="platform"></span>, версия <span id="version"></span></div>
+        <div class="muted small">Локальный прокси: <span id="ports"></span></div>
+      </div>
+
+      <div class="card" onclick="openSource()">
+        <div>Исходный код</div>
+        <div class="muted small">github.com/vibeVpnT/vibeVpnT — открыть в браузере</div>
+      </div>
+
+      <!-- Журнал под рукой: «что-то не работает» должно превращаться в
+           текст, который можно прочитать и переслать. -->
+      <div class="card about">
+        <div>Журнал</div>
+        <div class="muted small">Файл: <span id="log-path"></span></div>
+        <pre id="log" class="log muted small">пока пусто</pre>
+      </div>
+
+      <div class="card danger" onclick="quit()">
+        <div>Выйти из программы</div>
+        <div class="muted small">Соединение закроется, прокси выключится</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Предупреждение о конце срока. Показывается при каждом входе, пока
+     осталось три дня или меньше: человек открывает программу не каждый
+     день, и одного уведомления он просто не увидит. -->
+<div id="warn" class="overlay hidden">
+  <div class="dialog">
+    <h2 id="warn-title">Подписка заканчивается</h2>
+    <p class="muted" id="warn-text"></p>
+    <div class="buttons">
+      <button class="primary" onclick="warnToRenew()">Продлить</button>
+      <button class="ghost" onclick="closeWarn()">Позже</button>
+    </div>
+  </div>
+</div>
+
+<div id="notice"></div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# Ядро и справочники качаются при сборке, в репозитории им не место.
+assets/xray
+assets/xray.exe
+assets/xray-*.zip
+assets/core.gz
+assets/geoip.dat
+assets/geosite.dat
+assets/geosite-vv.dat
+assets/geoip-vv.dat
+
+rsrc_windows_amd64.syso
+vv.exe
+dist/

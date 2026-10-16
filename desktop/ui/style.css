@@ -1,0 +1,391 @@
+/* Цвета те же, что в brands/proxyvv.properties у мобильной версии:
+   приложение одно, платформы разные. */
+:root {
+  --accent: #FFD23F;
+  --accent-muted: rgba(255, 210, 63, 0.16);
+  --bg: #000000;
+  --surface: #123A2F;
+  --card: #102820;
+  --text: #FFFFFF;
+  --muted: #A5A5A5;
+  --divider: rgba(255, 255, 255, 0.08);
+  --ping: #00B994;
+  --ping-bad: #E05A4E;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* --- Вход ---------------------------------------------------------- */
+
+.screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.screen h1 { font-size: 20px; font-weight: 500; margin: 0; }
+.screen .hint { color: var(--muted); max-width: 420px; margin: 0; }
+
+.logo { width: 96px; height: 96px; }
+.logo.big { width: 168px; height: 168px; }
+
+#qr {
+  width: 220px;
+  height: 220px;
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px;
+}
+
+#digits {
+  font-size: 34px;
+  font-weight: 300;
+  letter-spacing: 6px;
+  margin-top: 12px;
+}
+
+.waiting { color: var(--accent); font-size: 12px; }
+
+/* --- Каркас -------------------------------------------------------- */
+
+#app { height: 100%; display: flex; }
+
+main {
+  flex: 1;
+  min-width: 0;
+  padding: 24px 28px 24px 24px;
+  overflow-y: auto;
+}
+
+/* Меню слева: на телефоне оно внизу, здесь по вертикали вдоль края.
+   Ширины хватает на подпись рядом со значком, а не под ним. */
+nav {
+  width: 176px;
+  flex: 0 0 176px;
+  border-right: 1px solid var(--divider);
+  background: #0A0A0A;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 12px;
+}
+
+.nav {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.nav svg { flex: 0 0 auto; }
+
+.nav svg { stroke: currentColor; }
+.nav:hover { color: var(--text); }
+.nav.active { color: var(--accent); background: var(--accent-muted); }
+
+/* --- Главная ------------------------------------------------------- */
+
+#tab-home {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+/* Быстрые переключатели под кнопкой. Плашка сама показывает, что
+   включено: погасшая — выключено, с точкой и рамкой — работает. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  background: var(--card);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+
+.chip:hover { color: var(--text); }
+
+.chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: background .15s;
+}
+
+.chip.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.chip.on .dot { background: var(--accent); }
+
+/* Пока переключение идёт, повторные нажатия ни к чему: смена режима
+   перезапускает ядро и спрашивает пароль. */
+.chip.busy { opacity: .5; pointer-events: none; }
+
+#power {
+  width: 136px;
+  height: 136px;
+  border-radius: 50%;
+  border: 2px solid #5A5A5A;
+  background: transparent;
+  color: #5A5A5A;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: color .18s, border-color .18s, background .18s;
+}
+
+#power svg { stroke: currentColor; }
+#power:hover { border-color: var(--text); color: var(--text); }
+
+#power.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+#timer {
+  font-size: 30px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Серверы ------------------------------------------------------- */
+
+.row.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.sort { color: var(--muted); font-size: 13px; }
+
+#sort {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 4px 8px;
+  margin-left: 6px;
+}
+
+#servers { display: flex; flex-direction: column; gap: 8px; padding-bottom: 92px; }
+
+.server {
+  background: var(--card);
+  border: 1.5px solid transparent;
+  border-radius: 14px;
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.server:hover { border-color: var(--divider); }
+.server.selected { border-color: var(--accent); }
+
+.server .name { font-size: 14px; }
+.server .type { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+/* Задержка в рамке: в строке это главное, ради чего сюда смотрят. */
+.ping {
+  border: 1px solid var(--ping);
+  color: var(--ping);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ping.bad { border-color: var(--ping-bad); color: var(--ping-bad); }
+
+.panel {
+  position: fixed;
+  left: 200px;
+  right: 24px;
+  bottom: 18px;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+#panel-title { font-size: 13px; }
+
+/* --- Настройки ----------------------------------------------------- */
+
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.card.about, .card.switch { cursor: default; }
+.card.switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.card.danger { color: #E07A6E; }
+
+.toggle {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--surface);
+  position: relative;
+  cursor: pointer;
+  transition: background .18s;
+}
+
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform .18s, background .18s;
+}
+
+.toggle.on { background: var(--accent); }
+.toggle.on::after { transform: translateX(16px); background: var(--bg); }
+
+/* --- Подписка ------------------------------------------------------ */
+
+.pick-hint { margin: 16px 2px 8px; }
+
+.card.tier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1.5px solid transparent;
+}
+
+.card.tier:hover { border-color: var(--accent); }
+.card.tier .amount { color: var(--accent); font-size: 17px; white-space: nowrap; }
+
+.buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
+/* --- Окно поверх всего ---------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.dialog {
+  background: var(--card);
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  padding: 22px 24px;
+  max-width: 380px;
+  text-align: center;
+}
+
+.dialog h2 { font-size: 17px; font-weight: 500; margin: 0 0 8px; }
+.dialog p { margin: 0; }
+.dialog .buttons { justify-content: center; margin-top: 18px; }
+
+/* --- Кнопки и уведомления ------------------------------------------ */
+
+button.primary, button.ghost {
+  border: 0;
+  border-radius: 24px;
+  padding: 11px 22px;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+button.primary { background: var(--accent-muted); color: var(--accent); }
+button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--divider); }
+button.primary:hover { background: rgba(255, 210, 63, 0.26); }
+button.ghost:hover { color: var(--text); }
+
+.log {
+  margin: 8px 0 0;
+  max-height: 150px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 11px/1.4 "Cascadia Mono", Consolas, monospace;
+  user-select: text;
+}
+
+button:disabled { opacity: .5; cursor: default; }
+
+#notice {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  max-width: 70%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+
+#notice.show { opacity: 1; }

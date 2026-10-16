@@ -1,0 +1,27 @@
+<!-- Иконка в шторке и строке состояния.
+     Android красит её сам и учитывает только форму, поэтому знак здесь
+     одноцветный и без фона — ровно так, как в mark-mono-white.svg.
+     viewBox исходника начинается не с нуля, а vector смещения не знает,
+     поэтому сдвиг задан группой; по вертикали знак заодно отцентрован. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="80"
+    android:viewportHeight="80">
+    <group
+        android:translateX="-10"
+        android:translateY="-9">
+        <path
+            android:pathData="M18,26 L50,72 L82,26"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="9"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M36,26 L50,46 L64,26"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="9"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>
