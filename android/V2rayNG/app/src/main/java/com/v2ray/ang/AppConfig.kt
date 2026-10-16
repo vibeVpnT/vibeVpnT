@@ -133,7 +133,7 @@ object AppConfig {
     // Справка про режимы осталась у v2rayNG: это их документация, и она
     // по делу. Своей вики у нас нет, а ссылка «в никуда» хуже чужой.
     const val APP_WIKI_MODE = "$GITHUB_URL/2dust/v2rayNG/wiki/Mode"
-    const val APP_PRIVACY_POLICY = "$GITHUB_RAW_URL/vibeVpnT/vibeVpnT/main/PRIVACY.md"
+    const val APP_PRIVACY_POLICY = "$GITHUB_RAW_URL/vibeVpnT/vibeVpnT/master/PRIVACY.md"
     const val APP_PROMOTION_URL = "aHR0cHM6Ly85LjIzNDQ1Ni54eXovYWJjLmh0bWw="
     const val DELAY_TEST_URL = "https://www.gstatic.com/generate_204"
     const val DELAY_TEST_URL2 = "https://www.google.com/generate_204"
