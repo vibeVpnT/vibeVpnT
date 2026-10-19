@@ -91,7 +91,7 @@ func tunSupported() bool { return true }
 // выдаёт setcap при установке. В снапе так нельзя — файлы лежат в
 // squashfs, примонтированной nosuid, а там права на файле не
 // действуют вовсе. Поэтому в снапе метки нет, и соединение ядра с
-// сервером уводит мимо туннеля отдельный маршрут (см. routeServer).
+// сервером уводит мимо туннеля отдельный маршрут (см. routeBypass).
 func markSupported() bool { return snapService() == "" }
 
 // outboundMark — метка, которую ядро ставит на свои исходящие пакеты.
@@ -392,14 +392,12 @@ func applyRouting() func() {
 	// правила узнаём по номерам, чужих не трогаем.
 	clearRouting()
 
-	undo := []func(){}
+	// Дыры в туннеле пробиваем первыми: если сделать это после того,
+	// как весь трафик уже ушёл в туннель, соединение ядра с сервером
+	// успеет сходить в кольцо.
+	routeBypass()
 
-	// Где метки нет (снап), соединение ядра с сервером уводим мимо
-	// туннеля отдельным маршрутом: иначе оно уйдёт в туннель, который
-	// этим же соединением и живёт.
-	if !markSupported() {
-		undo = append(undo, routeServer())
-	}
+	undo := []func(){}
 
 	for _, s := range steps {
 		if err := run(s.up); err != nil {
@@ -481,38 +479,84 @@ func clearRouting() {
 	_ = run([]string{"ip", "-6", "route", "flush", "table", fmt.Sprint(tunTable)})
 }
 
-// routeServer — держать соединение с сервером мимо туннеля.
+// routeBypass — дыры в туннеле: адреса, которые должны ходить прежним
+// путём.
 //
-// То же самое, что делает метка на пакетах, только снаружи: один адрес
-// ходит прежним путём, всё остальное — в туннель. Адрес один и тот же
-// на всё время соединения: при смене сервера ядро перезапускается, а с
-// ним и туннель.
-func routeServer() func() {
-	ip := askServerIP()
-	if ip == "" {
-		logf("адрес сервера неизвестен — соединение с ним может уйти в туннель")
-		return func() {}
-	}
-
+// Кладём их в ту же таблицу, куда правило уводит всё подряд: точный
+// маршрут в таблице выигрывает у «по умолчанию», и только он. Класть
+// их в основную таблицу бесполезно — до неё очередь уже не доходит.
+// Убирать потом не нужно: таблица вычищается целиком.
+//
+// Исключений два.
+//
+// Сервер. Иначе соединение ядра с ним уйдёт в туннель, который этим же
+// соединением и живёт: пакет идёт в туннель, туннель отдаёт его ядру,
+// ядро снова шлёт его серверу — и так, пока на петле не кончатся порты.
+// Там, где работает метка на пакетах (обычная установка), сервер и так
+// обходит туннель по метке, и адрес тут не нужен.
+//
+// Резолверы. Имена должны разрешаться и при включённом туннеле. Обычно
+// этим занимается resolvectl — он уводит все имена в туннель, — но он
+// бывает не везде; тогда остаётся разрешать их там же, где и всегда.
+func routeBypass() {
 	gateway, dev := defaultRoute()
 	if gateway == "" {
-		logf("не нашёл шлюз по умолчанию — трафик до сервера может пойти в туннель")
-		return func() {}
+		logf("не нашёл шлюз по умолчанию — исключений из туннеля не будет")
+		return
 	}
 
-	args := []string{"ip", "route", "add", ip, "via", gateway}
-	if dev != "" {
-		args = append(args, "dev", dev)
-	}
-	if err := run(args); err != nil {
-		logf("не вышло: %s (%v)", strings.Join(args, " "), err)
-		return func() {}
-	}
-	return func() {
-		if err := run([]string{"ip", "route", "del", ip}); err != nil {
-			logf("откат не вышел: ip route del %s (%v)", ip, err)
+	for _, ip := range bypassAddresses() {
+		args := []string{"ip", "route", "add", ip, "via", gateway}
+		if dev != "" {
+			args = append(args, "dev", dev)
+		}
+		args = append(args, "table", fmt.Sprint(tunTable))
+
+		if err := run(args); err != nil {
+			logf("не вышло: %s (%v)", strings.Join(args, " "), err)
 		}
 	}
+}
+
+// bypassAddresses — что именно должно ходить мимо туннеля.
+func bypassAddresses() []string {
+	out := []string{}
+
+	if !markSupported() {
+		if ip := askServerIP(); ip != "" {
+			out = append(out, ip)
+		} else {
+			logf("адрес сервера неизвестен — соединение с ним уйдёт в туннель")
+		}
+	}
+
+	return append(out, nameservers()...)
+}
+
+// nameservers — резолверы системы из /etc/resolv.conf.
+//
+// Петлю пропускаем: 127.0.0.53 — это свой же systemd-resolved, он
+// никуда по сети не ходит сам, а его запросы уводит в туннель
+// resolvectl.
+func nameservers() []string {
+	data, err := os.ReadFile("/etc/resolv.conf")
+	if err != nil {
+		return nil
+	}
+
+	out := []string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "nameserver" {
+			continue
+		}
+		ip := net.ParseIP(fields[1])
+		if ip == nil || ip.IsLoopback() || ip.To4() == nil {
+			continue
+		}
+		out = append(out, fields[1])
+	}
+	return out
 }
 
 // askServerIP — спросить у окна, с каким сервером оно работает.
