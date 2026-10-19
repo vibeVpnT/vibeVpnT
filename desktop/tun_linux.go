@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -82,15 +83,7 @@ func snapService() string {
 	return name + ".tun"
 }
 
-func tunSupported() bool {
-	if snapService() == "" {
-		return true
-	}
-	// В снапе служба туннеля своя, и просят её через snapctl. Нет его —
-	// попросить некого, и обещать режим VPN нечестно.
-	_, err := exec.LookPath("snapctl")
-	return err == nil
-}
+func tunSupported() bool { return true }
 
 // markSupported — может ли ядро пометить свои исходящие пакеты.
 //
@@ -113,38 +106,61 @@ func outboundMark() int {
 	return tunMark
 }
 
-// tunActive — работает ли сейчас служба туннеля.
+// tunActive — поднят ли сейчас туннель.
+//
+// В снапе смотрим на сам интерфейс, а не на службу: служба там
+// работает всегда и ждёт своего часа, так что по ней ничего не
+// понять.
 func tunActive() bool {
-	if name := snapService(); name != "" {
-		out, _ := exec.Command("snapctl", "services", name).Output()
-		for _, line := range strings.Split(string(out), "\n") {
-			// Строка таблицы: имя, автозапуск, состояние, примечания.
-			if fields := strings.Fields(line); len(fields) >= 3 && fields[0] == name {
-				return fields[2] == "active"
-			}
-		}
-		return false
+	if snapService() != "" {
+		_, err := net.InterfaceByName(tunDevice)
+		return err == nil
 	}
 	out, _ := exec.Command("systemctl", "is-active", tunService).Output()
 	return strings.TrimSpace(string(out)) == "active"
 }
 
-// startTun — попросить поднять туннель и дождаться интерфейса.
+// startTun — поднять туннель и дождаться интерфейса.
 //
-// Ждём именно интерфейс, а не слова «служба работает»: служба могла
-// подняться и тут же упасть, и тогда человек остался бы с тумблером,
-// который «вроде включён», но ничего не включил.
+// Из пакета службу запускаем сами. В снапе просить некого и незачем:
+// она уже работает и сама видит, что понадобилась, — по тому же
+// флагу, который мы только что переключили.
+//
+// Ждём в обоих случаях именно интерфейс, а не слова «служба
+// работает»: служба могла подняться и тут же упасть, и тогда человек
+// остался бы с тумблером, который «вроде включён», но ничего не
+// включил.
 func startTun() error {
-	if err := serviceDo("start"); err != nil {
-		return err
+	if snapService() == "" {
+		if err := serviceDo("start"); err != nil {
+			return err
+		}
 	}
-	if err := waitDevice(8 * time.Second); err != nil {
+	if err := waitDevice(12 * time.Second); err != nil {
 		return fmt.Errorf("туннель не поднялся, подробности: %s", tunLogHint())
 	}
 	return nil
 }
 
-func stopTun() error { return serviceDo("stop") }
+// stopTun — выключить туннель.
+//
+// В снапе службу снаружи не трогаем: она уходит из туннеля сама,
+// увидев, что больше не нужна. Нам остаётся дождаться, пока исчезнет
+// интерфейс.
+func stopTun() error {
+	if snapService() == "" {
+		return serviceDo("stop")
+	}
+
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if !tunActive() {
+			return nil
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return fmt.Errorf("туннель не выключился")
+}
 
 // tunLogHint — где смотреть, если туннель не поднялся.
 func tunLogHint() string {
@@ -154,26 +170,13 @@ func tunLogHint() string {
 	return "journalctl -u " + tunService
 }
 
-// serviceDo — попросить службу туннеля запуститься или остановиться.
+// serviceDo — попросить systemd запустить или остановить службу
+// туннеля. Это путь обычной установки, из пакета.
 //
-// В снапе это snapctl: снап распоряжается своими службами сам, и
-// пароля не нужно. В обычной установке — systemctl: в рабочем столе он
-// сам покажет окошко с паролем. Если агента нет (например, программу
-// запустили по ssh), пробуем pkexec — он спросит то же самое своим
-// окном.
+// Сначала обычным systemctl: в рабочем столе он сам покажет окошко с
+// паролем. Если агента нет (например, программу запустили по ssh),
+// пробуем pkexec — он спросит то же самое своим окном.
 func serviceDo(action string) error {
-	if name := snapService(); name != "" {
-		out, err := exec.Command("snapctl", action, name).CombinedOutput()
-		if err == nil {
-			return nil
-		}
-		text := strings.TrimSpace(string(out))
-		if text == "" {
-			text = err.Error()
-		}
-		return fmt.Errorf("%s", text)
-	}
-
 	out, err := exec.Command("systemctl", action, tunService).CombinedOutput()
 	if err == nil {
 		return nil
@@ -201,9 +204,17 @@ func serviceDo(action string) error {
 
 // runTunHelper — сама служба: поднять туннель и держать его.
 //
-// Возвращается, когда systemd просит остановиться, когда падает сам
-// туннель или когда исчезает ядро: туннель без ядра — это машина без
-// интернета, и оставлять такое нельзя ни на секунду.
+// Из пакета она живёт ровно столько, сколько нужен туннель: её
+// запускает окно по тумблеру и останавливает systemd, когда тумблер
+// выключили.
+//
+// В снапе так не выходит: службами снапа командует только root, а
+// программа работает от обычного пользователя — snapd на просьбу
+// запустить службу отвечает отказом и даже пароля не спрашивает.
+// Поэтому там служба работает всегда и сама решает, поднимать туннель
+// или нет: раз в секунду спрашивает окно, нужна ли она, — ровно как в
+// Windows, где остановить её снаружи тоже нечем. Пока не нужна, она
+// ничего не делает и ничего не трогает.
 func runTunHelper() error {
 	if _, err := os.Stat("/dev/net/tun"); err != nil {
 		return fmt.Errorf("в системе нет /dev/net/tun: %w", err)
@@ -214,6 +225,45 @@ func runTunHelper() error {
 		return fmt.Errorf("рядом с программой нет tun2socks")
 	}
 
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+
+	if snapService() == "" {
+		if err := holdTunnel(tunnel, stop); !errors.Is(err, errStopped) {
+			return err
+		}
+		return nil
+	}
+
+	for {
+		select {
+		case <-stop:
+			return nil
+		case <-time.After(time.Second):
+			if !tunnelWanted() {
+				continue
+			}
+			err := holdTunnel(tunnel, stop)
+			if errors.Is(err, errStopped) {
+				return nil
+			}
+			if err != nil {
+				logf("туннель: %v", err)
+				// Не получилось — не долбимся каждую секунду: окно уже
+				// показало ошибку, а человек вернётся к тумблеру сам.
+				time.Sleep(5 * time.Second)
+			}
+		}
+	}
+}
+
+// errStopped — службу попросили остановиться совсем. Отличается от
+// «туннель больше не нужен»: после первого ждать нечего, служба
+// заканчивается вместе с ним.
+var errStopped = errors.New("служба остановлена")
+
+// holdTunnel — поднять туннель и держать, пока он нужен.
+func holdTunnel(tunnel string, stop chan os.Signal) error {
 	// Длинные ключи пишутся двумя дефисами: с одним tun2socks разбирает
 	// их по буквам, и `-device` превращается в устройство с именем
 	// «evice» — молча и без ошибки.
@@ -241,9 +291,6 @@ func runTunHelper() error {
 	restore := applyRouting()
 	defer restore()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
-
 	for {
 		select {
 		case <-stop:
@@ -253,15 +300,15 @@ func runTunHelper() error {
 			case <-time.After(3 * time.Second):
 				_ = cmd.Process.Kill()
 			}
-			return nil
+			return errStopped
 
 		case err := <-done:
 			return fmt.Errorf("туннель завершился: %v", err)
 
 		case <-time.After(2 * time.Second):
-			// Ядро исчезло — дальше туннелю отдавать пакеты некому.
-			// Выходим сами, иначе на машине пропадёт интернет.
-			if !socksAlive() {
+			// Режим выключили, ядро исчезло или спрашивать стало не у
+			// кого — выходим сами, иначе на машине пропадёт интернет.
+			if !tunnelWanted() || !socksAlive() {
 				_ = cmd.Process.Signal(syscall.SIGTERM)
 				<-done
 				return nil
