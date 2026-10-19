@@ -391,6 +391,9 @@ build_snap() {
 
     sed "s/@VERSION@/$VERSION/" snapcraft.yaml.in > "$work/snapcraft.yaml"
     cp "$OUT/$BRAND.deb" "$work/"
+    # Значок витрины: тот же, что на ярлыке, но магазин берёт его
+    # только отдельным файлом, рядом с описанием.
+    cp assets/icon-src.png "$work/icon.png"
 
     (cd "$work" && snapcraft pack --destructive-mode --verbosity brief)
     mv "$work"/*.snap "$OUT/"
