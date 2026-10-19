@@ -56,10 +56,17 @@ error: cannot use "start" with uid 1000, try with sudo
 ## Поставить себе и проверить
 
 ```sh
+vibevpn --quit                # выйти из работающей копии — обязательно
+sudo snap remove vibevpn
 sudo snap install --dangerous --classic dist/vibevpn_2.6.1_amd64.snap
-sudo snap remove vibevpn      # снять
-snap logs vibevpn.tun         # если туннель не поднялся
+sudo snap logs vibevpn.tun    # если туннель не поднялся
+sudo cat /var/snap/vibevpn/current/vv/vv.log   # лог самой службы
 ```
+
+Про `--quit` всерьёз: закрытие окна браузера программу не выключает,
+она остаётся работать в фоне — и после переустановки продолжает
+работать **старым** кодом, из снятого уже снапа. Проверка в таком виде
+показывает прошлую сборку и путает следы.
 
 Проверять стоит ровно три вещи: окно открывается отдельным окном, а не
 вкладкой; тумблер «Режим VPN» включается без ошибки; после выключения
