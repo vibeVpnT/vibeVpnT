@@ -1,0 +1,74 @@
+# Снап настольной версии. Собирает его ./pack.sh snap из готового
+# vv.deb — из того же файла, что раздаётся отдельно: в магазине и в
+# пакете должна быть ровно одна программа, а не две похожие.
+#
+# @VERSION@ подставляет pack.sh, чтобы версия шла из brand.go и не
+# расходилась с тем, что показывает сама программа.
+#
+# confinement: classic — не от широты желаний, а по одной надобности:
+# окно интерфейса рисует браузер, который уже стоит у человека
+# (chrome --app, на худой конец firefox --new-window). Из строгого
+# снапа чужих программ не видно вовсе — там нет ни одного браузера, и
+# вместо окна получалась вкладка в том, что открыл xdg-open. Туда же,
+# в строгий снап, не пролезает и режим VPN: интерфейс и маршруты
+# поднимает служба, а ей нужны ip, sysctl и resolvectl хозяина.
+name: vibevpn
+title: VibeVPN
+version: '@VERSION@'
+summary: VibeVPN — подключение через свой сервер
+contact: https://github.com/vibeVpnT/vibeVpnT/issues
+issues: https://github.com/vibeVpnT/vibeVpnT/issues
+source-code: https://github.com/vibeVpnT/vibeVpnT
+website: https://github.com/vibeVpnT/vibeVpnT
+description: |
+  Настольная версия VibeVPN: те же экраны, что в мобильном приложении.
+  Вход — сканированием QR с телефона, где подписка уже есть;
+  регистрации нет.
+
+  Трафик идёт через системный прокси, а в режиме VPN — через сетевой
+  интерфейс, и тогда в туннель попадают все программы разом.
+  Российские сервисы при этом ходят напрямую.
+grade: stable
+confinement: classic
+base: core22
+
+apps:
+  vibevpn:
+    command: opt/vv/vv
+    desktop: usr/share/applications/vv.desktop
+
+  # Режим VPN: туннель и маршруты, всё это от root. Сама по себе служба
+  # не нужна — без ядра ей нечего делать, — поэтому при установке она
+  # выключена, а поднимает её окно по тумблеру: snapctl start.
+  tun:
+    command: opt/vv/vv --tun-run
+    daemon: simple
+    install-mode: disable
+    restart-condition: never
+
+parts:
+  app:
+    plugin: dump
+    source: ./vv.deb
+    source-type: deb
+    override-prime: |
+      craftctl default
+
+      # Ссылка /usr/bin/vv ведёт в /opt/vv — в снапе это путь хозяина,
+      # а не наш. Службу systemd из пакета тоже убираем: в снапе за
+      # службы отвечает snapd, и своя у него уже объявлена выше.
+      rm -f usr/bin/vv
+      rm -rf lib/systemd
+
+      # Exec=vibevpn — имя команды снапа: только такую строку snapd
+      # принимает, когда переносит ярлык в меню, а путь из пакета
+      # молча выбрасывает. ${SNAP} в значке он подставляет сам.
+      #
+      # Имя в меню — человеческое: в пакете ярлык называется по имени
+      # файла, а из магазина программу ставят по названию и ищут потом
+      # тоже по нему.
+      sed -i \
+        -e 's|^Exec=/opt/vv/vv|Exec=vibevpn|' \
+        -e 's|^Name=vv$|Name=VibeVPN|' \
+        -e 's|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/512x512/apps/vv.png|' \
+        usr/share/applications/vv.desktop

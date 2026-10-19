@@ -413,8 +413,17 @@ func handleRuDirect(w http.ResponseWriter, r *http.Request) {
 // снаружи нечем. «Нет» она получает, когда режим выключили или когда
 // ядро больше не работает; а если окна не стало вовсе, запрос не
 // дойдёт — и это тоже ответ «нет».
+//
+// Заодно отдаём адрес сервера: службе он нужен, чтобы увести соединение
+// ядра мимо туннеля, а самой ей разрешать имя уже поздно — к её запуску
+// весь трафик машины заперт в туннеле. Здесь адрес давно разрешён: с
+// ним же собирался конфиг ядра.
 func handleTunWanted(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"wanted": tunnelNeeded()})
+	address := ""
+	if s, ok := selectedServer(); ok {
+		address = serverAddress(s.Address)
+	}
+	writeJSON(w, map[string]any{"wanted": tunnelNeeded(), "server": address})
 }
 
 // handleVPNMode — переключить режим: туннель или системный прокси.

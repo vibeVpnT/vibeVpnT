@@ -3,8 +3,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -32,6 +34,11 @@ import (
 // службу systemd: пакет её ставит, но не включает, а окно просит
 // systemd её запустить. Пароль администратора спрашивает сам рабочий
 // стол — тем же окошком, что и при установке обновлений.
+//
+// В снапе всё то же самое, но службой распоряжается не systemd хозяина
+// (его оттуда и не видно), а сам snapd: служба объявлена в снапе, а
+// окно просит её командой snapctl. Пароль там не спрашивают — снап
+// управляет своими службами по праву, а не по разрешению.
 
 const (
 	// Имя интерфейса. Коротко, потому что ядро системы длиннее 15
@@ -62,15 +69,45 @@ const (
 	tunService = brandName + "-tun.service"
 )
 
-func tunSupported() bool { return true }
+// snapService — имя службы туннеля, если программа работает из снапа.
+// Пустая строка означает обычную установку из пакета.
+func snapService() string {
+	name := os.Getenv("SNAP_INSTANCE_NAME")
+	if name == "" {
+		name = os.Getenv("SNAP_NAME")
+	}
+	if name == "" {
+		return ""
+	}
+	return name + ".tun"
+}
+
+func tunSupported() bool {
+	if snapService() == "" {
+		return true
+	}
+	// В снапе служба туннеля своя, и просят её через snapctl. Нет его —
+	// попросить некого, и обещать режим VPN нечестно.
+	_, err := exec.LookPath("snapctl")
+	return err == nil
+}
+
+// markSupported — может ли ядро пометить свои исходящие пакеты.
+//
+// Метку ставит сам xray, а на это нужно право CAP_NET_ADMIN: в deb его
+// выдаёт setcap при установке. В снапе так нельзя — файлы лежат в
+// squashfs, примонтированной nosuid, а там права на файле не
+// действуют вовсе. Поэтому в снапе метки нет, и соединение ядра с
+// сервером уводит мимо туннеля отдельный маршрут (см. routeServer).
+func markSupported() bool { return snapService() == "" }
 
 // outboundMark — метка, которую ядро ставит на свои исходящие пакеты.
 //
 // По ней они обходят туннель: иначе соединение до сервера само попало
 // бы в туннель, который этим же соединением и живёт. Ноль — метить
-// незачем, туннеля нет.
+// незачем или нечем.
 func outboundMark() int {
-	if !vpnMode() {
+	if !vpnMode() || !markSupported() {
 		return 0
 	}
 	return tunMark
@@ -78,31 +115,65 @@ func outboundMark() int {
 
 // tunActive — работает ли сейчас служба туннеля.
 func tunActive() bool {
+	if name := snapService(); name != "" {
+		out, _ := exec.Command("snapctl", "services", name).Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			// Строка таблицы: имя, автозапуск, состояние, примечания.
+			if fields := strings.Fields(line); len(fields) >= 3 && fields[0] == name {
+				return fields[2] == "active"
+			}
+		}
+		return false
+	}
 	out, _ := exec.Command("systemctl", "is-active", tunService).Output()
 	return strings.TrimSpace(string(out)) == "active"
 }
 
-// startTun — попросить systemd поднять туннель.
+// startTun — попросить поднять туннель и дождаться интерфейса.
 //
-// Сначала обычным systemctl: в рабочем столе он сам покажет окошко с
-// паролем. Если агента нет (например, программу запустили по ssh),
-// пробуем pkexec — он спросит то же самое своим окном.
+// Ждём именно интерфейс, а не слова «служба работает»: служба могла
+// подняться и тут же упасть, и тогда человек остался бы с тумблером,
+// который «вроде включён», но ничего не включил.
 func startTun() error {
-	if err := systemctlDo("start"); err != nil {
+	if err := serviceDo("start"); err != nil {
 		return err
 	}
-	// Служба могла подняться и тут же упасть — скажем об этом сразу, а
-	// не оставим человека с тумблером, который «вроде включён».
-	time.Sleep(700 * time.Millisecond)
-	if !tunActive() {
-		return fmt.Errorf("туннель не поднялся, подробности: journalctl -u %s", tunService)
+	if err := waitDevice(8 * time.Second); err != nil {
+		return fmt.Errorf("туннель не поднялся, подробности: %s", tunLogHint())
 	}
 	return nil
 }
 
-func stopTun() error { return systemctlDo("stop") }
+func stopTun() error { return serviceDo("stop") }
 
-func systemctlDo(action string) error {
+// tunLogHint — где смотреть, если туннель не поднялся.
+func tunLogHint() string {
+	if name := snapService(); name != "" {
+		return "snap logs " + name
+	}
+	return "journalctl -u " + tunService
+}
+
+// serviceDo — попросить службу туннеля запуститься или остановиться.
+//
+// В снапе это snapctl: снап распоряжается своими службами сам, и
+// пароля не нужно. В обычной установке — systemctl: в рабочем столе он
+// сам покажет окошко с паролем. Если агента нет (например, программу
+// запустили по ssh), пробуем pkexec — он спросит то же самое своим
+// окном.
+func serviceDo(action string) error {
+	if name := snapService(); name != "" {
+		out, err := exec.Command("snapctl", action, name).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		text := strings.TrimSpace(string(out))
+		if text == "" {
+			text = err.Error()
+		}
+		return fmt.Errorf("%s", text)
+	}
+
 	out, err := exec.Command("systemctl", action, tunService).CombinedOutput()
 	if err == nil {
 		return nil
@@ -259,6 +330,14 @@ func applyRouting() func() {
 	}
 
 	undo := []func(){}
+
+	// Где метки нет (снап), соединение ядра с сервером уводим мимо
+	// туннеля отдельным маршрутом: иначе оно уйдёт в туннель, который
+	// этим же соединением и живёт.
+	if !markSupported() {
+		undo = append(undo, routeServer())
+	}
+
 	for _, s := range steps {
 		if err := run(s.up); err != nil {
 			logf("не вышло: %s (%v)", strings.Join(s.up, " "), err)
@@ -312,6 +391,85 @@ func applyDNS() func() {
 	// туннелем, а с ним и его DNS. Сбрасываем кеш, чтобы подменённые
 	// ответы не пережили выключение.
 	return func() { _ = run([]string{"resolvectl", "flush-caches"}) }
+}
+
+// routeServer — держать соединение с сервером мимо туннеля.
+//
+// То же самое, что делает метка на пакетах, только снаружи: один адрес
+// ходит прежним путём, всё остальное — в туннель. Адрес один и тот же
+// на всё время соединения: при смене сервера ядро перезапускается, а с
+// ним и туннель.
+func routeServer() func() {
+	ip := askServerIP()
+	if ip == "" {
+		logf("адрес сервера неизвестен — соединение с ним может уйти в туннель")
+		return func() {}
+	}
+
+	gateway, dev := defaultRoute()
+	if gateway == "" {
+		logf("не нашёл шлюз по умолчанию — трафик до сервера может пойти в туннель")
+		return func() {}
+	}
+
+	args := []string{"ip", "route", "add", ip, "via", gateway}
+	if dev != "" {
+		args = append(args, "dev", dev)
+	}
+	if err := run(args); err != nil {
+		logf("не вышло: %s (%v)", strings.Join(args, " "), err)
+		return func() {}
+	}
+	return func() {
+		if err := run([]string{"ip", "route", "del", ip}); err != nil {
+			logf("откат не вышел: ip route del %s (%v)", ip, err)
+		}
+	}
+}
+
+// askServerIP — спросить у окна, с каким сервером оно работает.
+//
+// Службе доводов не передают: ни systemd, ни snapd их не знают. Зато
+// окно рядом, на петле, и адрес у него уже разрешён — оно само
+// разрешило его, пока обычная сеть ещё работала.
+func askServerIP() string {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/tunwanted", uiPort))
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	var answer struct {
+		Server string `json:"server"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&answer) != nil {
+		return ""
+	}
+	if net.ParseIP(answer.Server) == nil {
+		return ""
+	}
+	return answer.Server
+}
+
+// defaultRoute — чем машина ходит в интернет сейчас: шлюз и интерфейс.
+func defaultRoute() (gateway, dev string) {
+	out, err := exec.Command("ip", "-4", "route", "show", "default").Output()
+	if err != nil {
+		return "", ""
+	}
+	line := strings.Split(strings.TrimSpace(string(out)), "\n")[0]
+
+	fields := strings.Fields(line)
+	for i := 0; i+1 < len(fields); i++ {
+		switch fields[i] {
+		case "via":
+			gateway = fields[i+1]
+		case "dev":
+			dev = fields[i+1]
+		}
+	}
+	return gateway, dev
 }
 
 func sysctlArgs(key, value string) []string {

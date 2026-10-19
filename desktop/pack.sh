@@ -4,6 +4,7 @@
 #   ./pack.sh        — всё, что раздаём: vv-windows.zip и vv.deb
 #   ./pack.sh win    — только Windows
 #   ./pack.sh deb    — только Ubuntu
+#   ./pack.sh snap   — снап для магазина (нужны snapcraft и lxd)
 #
 # Раздаются они по-разному, и это не прихоть. В Windows человек скачивает
 # один файл и запускает его: ядро и справочники лежат внутри exe и
@@ -236,7 +237,14 @@ build_deb() {
     fetch_geo
 
     echo "Собираю vv $VERSION для Ubuntu"
-    GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "$OUT/vv" .
+    # CGO_ENABLED=0 — чтобы программа ни от чего не зависела.
+    #
+    # Иначе Go собирает её с библиотекой C той машины, на которой
+    # собирали, и на системе постарше она просто не запускается: «нет
+    # версии GLIBC_2.42». Собирают у нас на свежей Ubuntu, а ставят
+    # люди на какой угодно — и в снапе это тем более заметно, потому
+    # что магазином пользуются все подряд.
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "$OUT/vv" .
 
     local root=$OUT/deb
     rm -rf "$root"
@@ -355,14 +363,49 @@ EOF
     rm -rf "$root" "$OUT/vv"
 }
 
+# Снап — тот же deb, завёрнутый для магазина приложений. Собирается
+# отдельной командой, а не вместе со всем: snapcraft есть не на каждой
+# машине, а для win и deb он не нужен вовсе.
+#
+# --destructive-mode: собираем прямо тут, без контейнера. Обычно так не
+# делают, но тут нечего собирать — снап только разворачивает готовый
+# deb и заворачивает его обратно. Зато не нужен ни lxd, ни права на
+# него, ни та же версия Ubuntu, что у base.
+#
+# Работаем в отдельной папке: snapcraft уносит к себе всё, что лежит
+# рядом с описанием, а в dist у нас и архивы, и прошлые сборки.
+
+build_snap() {
+    build_deb
+
+    command -v snapcraft > /dev/null || {
+        echo "нет snapcraft — снап собирать нечем (sudo snap install snapcraft --classic)" >&2
+        exit 1
+    }
+
+    echo "Собираю снап $BRAND $VERSION"
+
+    local work=$OUT/snap
+    rm -rf "$work"
+    mkdir -p "$work"
+
+    sed "s/@VERSION@/$VERSION/" snapcraft.yaml.in > "$work/snapcraft.yaml"
+    cp "$OUT/$BRAND.deb" "$work/"
+
+    (cd "$work" && snapcraft pack --destructive-mode --verbosity brief)
+    mv "$work"/*.snap "$OUT/"
+    rm -rf "$work"
+}
+
 BRAND=$(sed -n 's/.*brandName *= *"\(.*\)"/\1/p' brand.go)
 TITLE=$(sed -n 's/.*brandTitle *= *"\(.*\)"/\1/p' brand.go)
 
 case "$WHAT" in
-    win) build_win ;;
-    deb) build_deb ;;
-    all) build_win; build_deb ;;
-    *)   echo "не знаю, что такое «$WHAT»: бывает win, deb или ничего" >&2; exit 1 ;;
+    win)  build_win ;;
+    deb)  build_deb ;;
+    snap) build_snap ;;
+    all)  build_win; build_deb ;;
+    *)    echo "не знаю, что такое «$WHAT»: бывает win, deb, snap или ничего" >&2; exit 1 ;;
 esac
 
 echo
