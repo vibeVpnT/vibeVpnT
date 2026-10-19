@@ -421,7 +421,7 @@ func handleRuDirect(w http.ResponseWriter, r *http.Request) {
 func handleTunWanted(w http.ResponseWriter, r *http.Request) {
 	address := ""
 	if s, ok := selectedServer(); ok {
-		address = serverAddress(s.Address)
+		address = knownServerAddress(s.Address)
 	}
 	writeJSON(w, map[string]any{"wanted": tunnelNeeded(), "server": address})
 }

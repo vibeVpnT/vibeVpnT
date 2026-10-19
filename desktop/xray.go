@@ -384,6 +384,22 @@ func serverAddress(host string) string {
 	return host
 }
 
+// knownServerAddress — адрес сервера, если он уже известен.
+//
+// От serverAddress отличается тем, что никуда не ходит: только смотрит,
+// что запомнили при сборке конфига. Нужно там, где ждать нельзя — в
+// ответе службе туннеля. Она спрашивает раз в секунду и ждёт ответа три,
+// а неразрешимое имя отнимает по нескольку секунд на каждую попытку:
+// служба переставала дожидаться ответа вовсе и решала, что не нужна.
+func knownServerAddress(host string) string {
+	if net.ParseIP(host) != nil {
+		return host
+	}
+	resolvedMu.Lock()
+	defer resolvedMu.Unlock()
+	return resolvedIP[host]
+}
+
 func buildOutbound(s server) (map[string]any, error) {
 	stream := map[string]any{"network": s.Network}
 
