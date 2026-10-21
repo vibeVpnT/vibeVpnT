@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -18,6 +19,16 @@ import (
 // Выглядит хуже, но работает ровно так же.
 func openWindow() {
 	url := fmt.Sprintf("http://127.0.0.1:%d/", uiPort)
+
+	// В снапе — своё окно: из строгого снапа браузеров хозяина не видно
+	// вовсе, искать их ниже бесполезно (см. window/vv-window.c).
+	if snap := os.Getenv("SNAP"); snap != "" {
+		window := filepath.Join(snap, "opt", brandName, "vv-window")
+		if openAppWindow(window, []string{url}) {
+			logf("окно открыто через vv-window")
+			return
+		}
+	}
 
 	// Первая очередь — движок Chromium: он умеет режим приложения, и
 	// окно получается без адресной строки и вкладок, как настоящее.

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Запуск программы снапа на рабочем столе: передаёт управление
+# desktop-launch из gnome-42-2204 — тот настраивает GTK, WebKitGTK,
+# шрифты и темы. То же, что кладёт в снап расширение gnome у snapcraft
+# (откуда и взято); своё — потому что часть расширения не собирается
+# make свежих Ubuntu (см. snapcraft.yaml.in).
+set -- "${SNAP}/gnome-platform/command-chain/desktop-launch" "$@"
+# shellcheck source=/dev/null
+source "${SNAP}/snap/command-chain/run"

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Общая часть desktop-launch: выполнить команду из gnome-42-2204 в этом
+# же процессе (как exec, но через source). Взято из snapcraft.
+
+if [ -z "$1" ]; then
+    echo "run <command>"
+    exit 1
+fi
+
+if [ -z "${SNAP}" ]; then
+    echo "Not running inside a snap context: SNAP not declared"
+    exit
+fi
+
+if [ ! -f "$1" ]; then
+    echo "Content snap command-chain for $1 not found: ensure slot is connected"
+    exit
+fi
+
+# shellcheck disable=SC2034  # $BASH_ARGV0 — это $0 для source ниже
+BASH_ARGV0=$1
+shift
+# shellcheck source=/dev/null
+source "$0"
