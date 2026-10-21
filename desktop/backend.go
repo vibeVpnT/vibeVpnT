@@ -78,7 +78,7 @@ func deviceFields() map[string]any {
 		"android_id":      st.DeviceID,
 		"app_version":     appVersion,
 		"device_brand":    "PC",
-		"device_model":    "Windows",
+		"device_model":    platformName(),
 		"android_release": runtime.GOOS,
 		"source":          "desktop",
 	}
