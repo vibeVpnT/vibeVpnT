@@ -18,5 +18,5 @@ const (
 	// отдельной ручкой, а не ссылкой на странице, чтобы окно умело
 	// открывать только её, а не что угодно.
 	brandSource = "https://github.com/vibeVpnT/vibeVpnT"
-	appVersion  = "2.6.1"
+	appVersion  = "2.6.2"
 )
