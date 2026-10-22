@@ -207,14 +207,27 @@ func buildConfig(s server, routing *routingAnswer) ([]byte, error) {
 	// же ядро. Пакеты самого ядра так попали бы в кольцо, поэтому метим
 	// их: по метке система отправляет их обычным путём, мимо туннеля.
 	// Метка нужна обоим выходам — и на сервер, и напрямую.
+	//
+	// Метить можно не везде (в снапе нечем — см. markSupported). Тогда
+	// соединения ядра привязываются к настоящему сетевому интерфейсу: такой
+	// пакет не находит маршрута в таблице туннеля и уходит обычным путём.
+	// Без этого кольцо получалось у всего, что ядро шлёт напрямую, —
+	// российских сайтов, локальной сети, — и машина вязла на нём, пока на
+	// петле не кончались порты.
+	var sockopt map[string]any
 	if mark := outboundMark(); mark > 0 {
-		sockopt := map[string]any{"sockopt": map[string]any{"mark": mark}}
+		sockopt = map[string]any{"mark": mark}
+	} else if iface := egressInterface(); iface != "" {
+		sockopt = map[string]any{"interface": iface}
+		logf("режим VPN без метки: соединения ядра привязаны к %s", iface)
+	}
+	if sockopt != nil {
 		if stream, ok := outbound["streamSettings"].(map[string]any); ok {
-			stream["sockopt"] = map[string]any{"mark": mark}
+			stream["sockopt"] = sockopt
 		} else {
-			outbound["streamSettings"] = sockopt
+			outbound["streamSettings"] = map[string]any{"sockopt": sockopt}
 		}
-		direct["streamSettings"] = map[string]any{"sockopt": map[string]any{"mark": mark}}
+		direct["streamSettings"] = map[string]any{"sockopt": sockopt}
 	}
 
 	rules := []any{}

@@ -18,6 +18,8 @@ func tunSupported() bool { return false }
 // нечего. Ноль означает «без метки».
 func outboundMark() int { return 0 }
 
+func egressInterface() string { return "" }
+
 func tunActive() bool { return false }
 
 func startTun() error { return errors.New("режим VPN пока только в Ubuntu") }

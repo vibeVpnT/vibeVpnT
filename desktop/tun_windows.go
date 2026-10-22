@@ -56,6 +56,10 @@ func tunSupported() bool {
 // сервера — его прописывает сама служба.
 func outboundMark() int { return 0 }
 
+// egressInterface — привязывать соединения ядра не к чему: туннель в
+// Windows обходит сервер своим маршрутом (см. applyRouting).
+func egressInterface() string { return "" }
+
 func tunActive() bool {
 	_, err := net.InterfaceByName(tunDevice)
 	return err == nil

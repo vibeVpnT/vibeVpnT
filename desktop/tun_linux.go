@@ -65,6 +65,7 @@ const (
 	// чужие настройки остаются нетронутыми.
 	tunTable    = 2026
 	tunPrefMark = 10
+	tunPrefMain = 15
 	tunPrefAll  = 20
 
 	tunService = brandName + "-tun.service"
@@ -104,6 +105,48 @@ func outboundMark() int {
 		return 0
 	}
 	return tunMark
+}
+
+// egressInterface — настоящий сетевой интерфейс, к которому привязать
+// соединения ядра, когда метить их нечем. Пустая строка — привязывать
+// незачем (режим VPN выключен или метка работает) или не нашлось к чему.
+//
+// Интерфейс — тот, через который система сейчас пошла бы в интернет.
+// Спрашиваем об этом её саму: «соединение» по UDP ничего не отправляет,
+// а адрес, с которого оно пошло бы, система выбирает по своим маршрутам.
+// Конфиг ядра собирается до того, как поднят туннель, так что ответ —
+// настоящий интерфейс, а не туннель; но на всякий случай туннель
+// отбрасываем.
+func egressInterface() string {
+	if !vpnMode() || markSupported() {
+		return ""
+	}
+	conn, err := net.Dial("udp4", "1.1.1.1:53")
+	if err != nil {
+		logf("не нашёл выход в интернет: %v", err)
+		return ""
+	}
+	local := conn.LocalAddr().(*net.UDPAddr).IP
+	_ = conn.Close()
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		logf("не прочитал список интерфейсов: %v", err)
+		return ""
+	}
+	for _, iface := range ifaces {
+		if iface.Name == tunDevice {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.Equal(local) {
+				return iface.Name
+			}
+		}
+	}
+	logf("не нашёл интерфейс с адресом %s", local)
+	return ""
 }
 
 // tunActive — поднят ли сейчас туннель.
@@ -400,6 +443,13 @@ func applyRouting() func() {
 
 		{up: []string{"ip", "rule", "add", "fwmark", fmt.Sprint(tunMark), "lookup", "main", "pref", fmt.Sprint(tunPrefMark)},
 			down: []string{"ip", "rule", "del", "pref", fmt.Sprint(tunPrefMark)}},
+		// Всё, что в основной таблице есть, кроме «по умолчанию», —
+		// локальная сеть, docker, адреса самой машины — идёт как шло.
+		// Туннелю достаётся только то, что ушло бы в интернет: иначе
+		// принтер, телевизор и соседние машины ходили бы через сервер за
+		// границей. Тот же приём, что у wg-quick.
+		{up: []string{"ip", "rule", "add", "lookup", "main", "suppress_prefixlength", "0", "pref", fmt.Sprint(tunPrefMain)},
+			down: []string{"ip", "rule", "del", "pref", fmt.Sprint(tunPrefMain)}},
 		{up: []string{"ip", "route", "add", "default", "dev", tunDevice, "table", fmt.Sprint(tunTable)},
 			down: []string{"ip", "route", "flush", "table", fmt.Sprint(tunTable)}},
 		{up: []string{"ip", "rule", "add", "lookup", fmt.Sprint(tunTable), "pref", fmt.Sprint(tunPrefAll)},
@@ -409,6 +459,8 @@ func applyRouting() func() {
 		// обойдёт туннель стороной и уйдёт с домашнего адреса.
 		{up: []string{"ip", "-6", "rule", "add", "fwmark", fmt.Sprint(tunMark), "lookup", "main", "pref", fmt.Sprint(tunPrefMark)},
 			down: []string{"ip", "-6", "rule", "del", "pref", fmt.Sprint(tunPrefMark)}},
+		{up: []string{"ip", "-6", "rule", "add", "lookup", "main", "suppress_prefixlength", "0", "pref", fmt.Sprint(tunPrefMain)},
+			down: []string{"ip", "-6", "rule", "del", "pref", fmt.Sprint(tunPrefMain)}},
 		{up: []string{"ip", "-6", "route", "add", "default", "dev", tunDevice, "table", fmt.Sprint(tunTable)},
 			down: []string{"ip", "-6", "route", "flush", "table", fmt.Sprint(tunTable)}},
 		{up: []string{"ip", "-6", "rule", "add", "lookup", fmt.Sprint(tunTable), "pref", fmt.Sprint(tunPrefAll)},
@@ -492,7 +544,7 @@ func applyDNS() func() {
 // Трогаем только свои номера. Повторяем несколько раз: одинаковых
 // правил могло накопиться несколько, а `ip rule del` снимает по одному.
 func clearRouting() {
-	for _, pref := range []int{tunPrefAll, tunPrefMark} {
+	for _, pref := range []int{tunPrefAll, tunPrefMain, tunPrefMark} {
 		for _, family := range [][]string{{"ip"}, {"ip", "-6"}} {
 			for i := 0; i < 3; i++ {
 				args := append(append([]string{}, family...), "rule", "del", "pref", fmt.Sprint(pref))
