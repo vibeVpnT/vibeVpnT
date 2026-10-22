@@ -8,28 +8,60 @@
 ./pack.sh snap     # соберёт deb и завернёт его в dist/vibevpn_<версия>_amd64.snap
 ```
 
-Контейнер (lxd) для этого не нужен: собирать нечего, снап только
-разворачивает готовый пакет, поэтому сборка идёт прямо на месте
-(`--destructive-mode`).
+Контейнер (lxd) для этого не нужен: снап разворачивает готовый пакет,
+поэтому сборка идёт прямо на месте (`--destructive-mode`). Компилируется
+только окно (`window/vv-window.c`), и его собирает `window/build.sh` в
+docker под Ubuntu 22.04 — то, что собрано на свежей системе, в core22 не
+запустилось бы. Сборочная среда — образ `vv-window-build`: первый раз он
+собирается пару минут, дальше берётся из кеша.
 
-## Почему classic, а не строгий снап
+## Строгий снап: окно и режим VPN
 
-Строгий снап у нас уже был, и в нём не работали ровно две вещи — обе
-заметные.
+Снап строгий (`confinement: strict`). Classic магазин VPN-клиенту не
+дал бы: на форуме прямо сказали, что строгих VPN-клиентов в магазине
+много и classic для них не выпускают
+([тема](https://forum.snapcraft.io/t/request-for-classic-confinement-vibevpn/53738)).
+И он не нужен.
 
-**Окно.** Интерфейс программы — это страница, которую она отдаёт сама
-себе на 127.0.0.1, а показывает её браузер человека: `chrome --app=…`
-рисует окно без вкладок и адресной строки, и выглядит это как обычное
-приложение. Внутри строгого снапа чужих программ не видно вовсе — ни
-одного браузера там нет. Остаётся `xdg-open`, то есть «открой ссылку
-чем-нибудь»: интерфейс появлялся вкладкой в случайном окне.
+**Окно — своё.** Из строгого снапа браузеров хозяина не видно, поэтому
+снап везёт `vv-window`: окно на WebKitGTK из `gnome-42-2204`. Программа
+открывает его вместо `chrome --app`, если видит `SNAP` (`openWindow` в
+`window_linux.go`). Две вещи, без которых оно не работает:
 
-**Режим VPN.** Туннель поднимает служба снапа, и ей нужны `ip`,
-`sysctl` и `resolvectl` системы. Плюс ядру нужно право помечать свои
-пакеты (`CAP_NET_ADMIN`), а в снапе файлы лежат в squashfs,
-примонтированной `nosuid`, — права на файле там не действуют. Поэтому
-в снапе метки нет, и соединение с сервером уводит мимо туннеля
-отдельный маршрут (см. `routeServer` в `tun_linux.go`).
+* **без прокси.** Перед любым соединением WebKit спрашивает у портала
+  рабочего стола, через какой прокси идти, а из снапа портал отвечает
+  «not available inside the sandbox» — и не открывается даже
+  `127.0.0.1`: окно белое. Окну прокси не нужен вовсе, он выключен;
+* **само закрывается**, когда программы нет: раз в две секунды
+  стучится к ней и после трёх промахов уходит. Иначе после
+  `vibevpn --quit` пустое окно висело, а snapd отказывался обновлять
+  «запущенный» снап.
+
+Ошибки загрузки и консоль страницы окно пишет в stdout — вне разбора он
+никуда не ведёт. Запустить окно руками внутри снапа:
+`snap run --shell vibevpn.vibevpn -c '"$SNAP/opt/vv/vv-window" http://127.0.0.1:48713/'`.
+
+Расширения gnome в `snapcraft.yaml.in` нет — то, во что оно
+разворачивается, записано явно: его служебная часть не собирается make
+свежих Ubuntu.
+
+**Режим VPN** поднимает служба `vibevpn.tun` с разрешением
+`network-control`; `ip`, `sysctl` и `resolvectl` берутся из core22 — это
+корень строгого снапа. Само разрешение не подключается: без него окно
+показывает плашку с командой `sudo snap connect vibevpn:network-control`
+и кнопкой «Скопировать». Спросить пароль по нажатию нельзя — подключать
+разрешения умеет только snapd, а просить его об этом строгому снапу не
+положено. Подключаться само оно станет, когда магазин одобрит
+автоподключение (заявка — ниже).
+
+**Метки на пакетах в снапе нет** (файлы в squashfs, примонтированной
+`nosuid`, — права на файле там не действуют). Поэтому соединения ядра
+привязаны к настоящему сетевому интерфейсу (`sockopt.interface`,
+`egressInterface` в `tun_linux.go`): такой пакет не находит маршрута в
+таблице туннеля и уходит обычным путём. Без этого всё, что ядро шлёт
+напрямую, — российские сайты, локальная сеть — шло в туннель по кругу,
+пока на петле не кончались порты (в журнале службы — `cannot assign
+requested address`), и всё вязло.
 
 ## Служба туннеля
 
@@ -57,20 +89,19 @@ error: cannot use "start" with uid 1000, try with sudo
 
 ```sh
 vibevpn --quit                # выйти из работающей копии — обязательно
-sudo snap remove vibevpn
-sudo snap install --dangerous --classic dist/vibevpn_2.6.1_amd64.snap
-sudo snap logs vibevpn.tun    # если туннель не поднялся
-sudo cat /var/snap/vibevpn/current/vv/vv.log   # лог самой службы
+sudo snap install --dangerous dist/vibevpn_2.6.2_amd64.snap
+sudo snap connect vibevpn:network-control   # для режима VPN
+journalctl -u snap.vibevpn.tun -f            # если туннель не поднялся
+cat ~/snap/vibevpn/current/.config/vv/vv.log # лог программы
 ```
 
-Про `--quit` всерьёз: закрытие окна браузера программу не выключает,
-она остаётся работать в фоне — и после переустановки продолжает
-работать **старым** кодом, из снятого уже снапа. Проверка в таком виде
-показывает прошлую сборку и путает следы.
+Если `snap install` отвечает «has running apps» — где-то осталось окно:
+`ps -eo pid,args | grep vv-window`.
 
-Проверять стоит ровно три вещи: окно открывается отдельным окном, а не
-вкладкой; тумблер «Режим VPN» включается без ошибки; после выключения
-интернет остаётся на месте.
+Проверять стоит четыре вещи: окно открывается отдельным окном и не
+белое; тумблер «Режим VPN» без разрешения показывает плашку, а с ним
+включается; в режиме VPN сайты открываются так же быстро, как в режиме
+прокси (российские — тоже); после выключения интернет на месте.
 
 ## Режим VPN в линуксе: на чём ломались
 
@@ -102,92 +133,50 @@ tun2socks и смотреть `ip route get <адрес>`.
 
 ## Состояние в магазине
 
-Первое, что стоит знать: **«Центр приложений» показывает витрину
-магазина, а не то, что лежит в установленном файле**. Мы на этом
-потеряли время: в снапе уже было новое описание и значок, а на экране
-оставались старые строки от 2.5.1 — потому что брались они из магазина.
-Из файла в магазин их переносит `snapcraft upload-metadata` (проходит и
-без одобрения classic), а не обычная установка.
+На 22 октября 2026-го в `latest/stable` — **строгий 2.6.2** (ревизия 4).
+`snap install vibevpn` ставит его; лендинг показывает эту команду
+(`SNAP_IN_STORE` в `vibeSite/build.py`) и вторую — `snap connect`, пока
+не одобрено автоподключение (`SNAP_AUTOCONNECT` там же).
 
-На октябрь 2026-го:
-
-* в `latest/stable` лежит **старая 2.5.1**, строгая — та самая, что
-  открывалась вкладкой и не умела VPN. То есть `snap install vibevpn`
-  сегодня ставит именно её;
-* новая 2.6.1 загружена, но висит на ручной проверке: `confinement
-  'classic' not allowed` — нужна заявка на форуме (текст ниже);
-* заявка подана 21 октября, и сразу после этого форум временно
-  заблокировал учётную запись: «вы не сможете отвечать или создавать
-  темы, пока сотрудник администрации не проверит ваши последние
-  публикации». Это автоматический фильтр Discourse: первая тема нового
-  аккаунта, да ещё со ссылками и кодом, похожа ему на спам. Тема
-  появится сама, когда модератор её посмотрит. Пересоздавать её или
-  заводить второй аккаунт нельзя — так временная блокировка становится
-  постоянной. Если за 2–3 рабочих дня ничего не сдвинется, написать в
-  Matrix-комнату `#snapcraft:ubuntu.com`, что первую тему в
-  store-requests придержал фильтр;
-* название, описание, лицензия и значок в витрине обновлены отдельной
-  командой `snapcraft upload-metadata` — она проходит и без одобрения
-  classic;
 * издатель показывается как «Support» — это имя учётной записи Ubuntu
   One, меняется только в профиле на login.ubuntu.com;
 * скриншотов нет: они живут в витрине (snapcraft.io/vibevpn/listing), из
-  файла снапа их не поставить.
-
-На лендинге (репозиторий `vibeSite`) установка снапа идёт первой строкой,
-файлом; как только classic одобрят, флаг `SNAP_IN_STORE` в `build.py`
-меняется на `True`, и страница покажет короткую команду из магазина.
-Раздачу `.snap` российский сервер принимает — список расширений в
-`publish-file` расширен.
+  файла снапа их не поставить;
+* «Центр приложений» показывает витрину магазина, а не то, что лежит в
+  файле: описание и значок туда переносит `snapcraft upload-metadata`.
 
 ## Выложить в магазин
 
 ```sh
-snapcraft upload dist/vibevpn_2.6.1_amd64.snap --release=stable
+snapcraft upload --release=stable dist/vibevpn_<версия>_amd64.snap
 ```
 
-Classic в магазине дают не всем и не сразу: нужна заявка на форуме
-Snapcraft, в разделе `store-requests`, и её читают люди. Пока заявку не
-одобрили, `snapcraft upload` ответит отказом — classic revision не
-принимается. Снап при этом можно раздавать файлом: `--dangerous
---classic` ставится и без магазина.
+Строгий снап проверяется автоматически, без людей. Если загрузка ответила
+«Waiting for previous upload(s) to complete their review process» —
+в кабинете (dashboard.snapcraft.io) висит прошлая загрузка на ручной
+проверке: «Reject and remove from review queue» на её странице, и
+повторить. Так было с classic-ревизией 2.6.1.
 
-Текст заявки (создать тему в <https://forum.snapcraft.io/c/store-requests>,
-заголовок `Request for classic confinement: vibevpn`):
+Заявка на автоподключение `network-control` (тема в
+<https://forum.snapcraft.io/c/store-requests>):
 
-> **Request for classic confinement: vibevpn**
+> **Request for auto-connection of network-control: vibevpn**
 >
-> `vibevpn` is a desktop VPN client (Xray + tun2socks) published by
-> `vibevpn`. Its user interface is a local web page that the
-> application serves on `127.0.0.1` and opens in the user's own browser
-> as an application window — `google-chrome --app=…`, falling back to
-> `firefox --new-window`.
+> `vibevpn` is a desktop VPN client (Xray + tun2socks), now strictly
+> confined after the [classic request](https://forum.snapcraft.io/t/request-for-classic-confinement-vibevpn/53738)
+> was dropped.
 >
-> Under strict confinement the snap cannot see or launch any browser
-> installed on the host: there is no browser inside the snap's mount
-> namespace, so the only available option is `xdg-open` through the
-> desktop portal. That opens the interface as a tab in whatever browser
-> happens to be running, which is not an acceptable presentation for an
-> application whose whole window is that page. I am not aware of an
-> interface that allows launching an arbitrary host browser as a child
-> process.
+> Its VPN mode is a daemon, `vibevpn.tun`, that creates a TUN device and
+> sets up policy routing (`ip rule`, `ip route`, `rp_filter`) so that the
+> whole system's traffic goes through the tunnel. Without
+> `network-control` the daemon can create neither the interface nor the
+> routes, so the VPN mode — the main feature of the app — does not work
+> until the user runs `sudo snap connect vibevpn:network-control` by
+> hand.
 >
-> The VPN mode needs host tooling as well. The snap ships its own
-> daemon that brings up a TUN device and configures routing with `ip`,
-> `sysctl` and `resolvectl` from the host, and the Xray core marks its
-> own packets with `SO_MARK`, which requires `CAP_NET_ADMIN` granted
-> through file capabilities. File capabilities do not work from a
-> squashfs mounted `nosuid`, so this part cannot work under strict
-> confinement even with `network-control` granted.
->
-> Requested category: running arbitrary host binaries that are not and
-> cannot be shipped inside the snap (the user's browser and the host
-> network tooling).
+> Only the daemon plugs `network-control`; the user-facing app does not.
 >
 > Source: <https://github.com/vibeVpnT/vibeVpnT> (`desktop/`)
 
-Если classic не одобрят, остаются два пути: раздавать снап файлом (он
-ставится с `--dangerous --classic`) или оставить магазину строгий снап,
-где интерфейс открывается вкладкой, а режим VPN не работает — и тогда
-тумблер там придётся прятать, чтобы не обещать несбыточное. Deb при
-этом работает как работал: его ничего из этого не касается.
+Как одобрят — `SNAP_AUTOCONNECT = True` в `vibeSite/build.py` и
+`make publish` там же.
