@@ -76,6 +76,9 @@ static gboolean on_load_failed(WebKitWebView *view, WebKitLoadEvent event, char 
     if (g_error_matches(error, WEBKIT_NETWORK_ERROR, WEBKIT_NETWORK_ERROR_CANCELLED)) {
         return FALSE;
     }
+    /* В stdout: вне разбора он никуда не ведёт, а при разборе без этой
+     * строки белое окно ничего не объясняет. */
+    g_print("vv-window: не открылось %s: %s\n", uri, error->message);
     g_timeout_add_seconds(1, retry, view);
     return TRUE;
 }
@@ -93,11 +96,23 @@ int main(int argc, char **argv) {
     gtk_window_set_default_size(GTK_WINDOW(window), 1060, 720);
     gtk_window_set_icon_name(GTK_WINDOW(window), "vv");
 
+    /* Без прокси: окно ходит только к самой программе на 127.0.0.1.
+     * Иначе WebKit сперва спрашивает портал рабочего стола, через какой
+     * прокси идти, а из снапа портал отвечает «not available inside the
+     * sandbox» — и не открывается даже петля: окно остаётся белым. */
+    WebKitWebsiteDataManager *data = webkit_web_context_get_website_data_manager(
+        webkit_web_context_get_default());
+    webkit_website_data_manager_set_network_proxy_settings(
+        data, WEBKIT_NETWORK_PROXY_MODE_NO_PROXY, NULL);
+
     GtkWidget *view = webkit_web_view_new();
     WebKitSettings *settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(view));
     /* Не браузер: ни инструментов разработчика, ни масштаба по Ctrl+колесо. */
     webkit_settings_set_enable_developer_extras(settings, FALSE);
     webkit_settings_set_zoom_text_only(settings, FALSE);
+    /* Ошибки JavaScript страницы — в stdout: без этого пустое окно ничего
+     * не объясняет. */
+    webkit_settings_set_enable_write_console_messages_to_stdout(settings, TRUE);
 
     g_signal_connect(view, "decide-policy", G_CALLBACK(on_decide_policy), window);
     g_signal_connect(view, "notify::title", G_CALLBACK(on_title), window);

@@ -5,15 +5,16 @@
 # glibc новее, чем есть в core22, и не запустилось бы.
 #
 #   window/build.sh ВЫХОДНОЙ_ФАЙЛ
+#
+# Сборочная среда — образ vv-window-build из Dockerfile рядом: первый раз
+# он собирается долго, дальше берётся из кеша.
 set -eu
 OUT=$(realpath -m "$1")
 HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$(dirname "$OUT")"
 
-docker run --rm -v "$HERE:/src:ro" -v "$(dirname "$OUT"):/out" ubuntu:22.04 sh -euc "
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq >/dev/null
-    apt-get install -y -qq --no-install-recommends gcc libc6-dev pkg-config libwebkit2gtk-4.1-dev >/dev/null
-    gcc -O2 -Wall -o /out/$(basename "$OUT") /src/vv-window.c \$(pkg-config --cflags --libs webkit2gtk-4.1)
-    chown $(id -u):$(id -g) /out/$(basename "$OUT")
-"
+docker build -q -t vv-window-build "$HERE" > /dev/null
+
+docker run --rm -u "$(id -u):$(id -g)" -v "$HERE:/src:ro" -v "$(dirname "$OUT"):/out" vv-window-build \
+    sh -euc 'gcc -O2 -Wall -o "/out/$1" /src/vv-window.c $(pkg-config --cflags --libs webkit2gtk-4.1)' \
+    sh "$(basename "$OUT")"
