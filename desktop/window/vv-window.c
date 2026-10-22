@@ -83,6 +83,37 @@ static gboolean on_load_failed(WebKitWebView *view, WebKitLoadEvent event, char 
     return TRUE;
 }
 
+/* Окно — отдельный процесс, и само по себе оно программу не переживает
+ * только потому, что следит за ней: стучится к ней раз в две секунды и,
+ * если она трижды подряд не ответила, закрывается. Без этого после
+ * выхода программы (vibevpn --quit, выключение из меню) пустое окно
+ * оставалось висеть — а с ним и «запущенный» снап, который snapd тогда
+ * отказывается обновлять. Следить начинаем, только когда программа хоть
+ * раз ответила: при запуске окно может успеть раньше неё. */
+static gboolean program_seen = FALSE;
+static int program_misses = 0;
+
+static gboolean watch_program(gpointer window) {
+    GSocketClient *client = g_socket_client_new();
+    /* Без прокси — по той же причине, что и у страницы (см. main). */
+    g_socket_client_set_enable_proxy(client, FALSE);
+    g_socket_client_set_timeout(client, 1);
+    GSocketConnection *connection = g_socket_client_connect_to_uri(client, home_url, 80, NULL, NULL);
+    g_object_unref(client);
+
+    if (connection) {
+        g_object_unref(connection);
+        program_seen = TRUE;
+        program_misses = 0;
+        return G_SOURCE_CONTINUE;
+    }
+    if (program_seen && ++program_misses >= 3) {
+        gtk_widget_destroy(GTK_WIDGET(window));
+        return G_SOURCE_REMOVE;
+    }
+    return G_SOURCE_CONTINUE;
+}
+
 int main(int argc, char **argv) {
     /* По этому имени рабочий стол связывает окно со значком программы —
      * то же, что --class у chrome вне снапа. */
@@ -124,6 +155,7 @@ int main(int argc, char **argv) {
     gtk_container_add(GTK_CONTAINER(window), view);
     webkit_web_view_load_uri(WEBKIT_WEB_VIEW(view), home_url);
     gtk_widget_show_all(window);
+    g_timeout_add_seconds(2, watch_program, window);
 
     gtk_main();
     return 0;
