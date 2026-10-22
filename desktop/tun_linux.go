@@ -131,8 +131,8 @@ func tunActive() bool {
 // остался бы с тумблером, который «вроде включён», но ничего не
 // включил.
 func startTun() error {
-	if err := snapPermissionMissing(); err != nil {
-		return err
+	if p := tunPermission(); p != nil {
+		return p
 	}
 	if snapService() == "" {
 		if err := serviceDo("start"); err != nil {
@@ -145,13 +145,15 @@ func startTun() error {
 	return nil
 }
 
-// snapPermissionMissing — подключено ли снапу разрешение network-control.
+// tunPermission — чего не хватает режиму VPN, или nil, если всего хватает.
 //
-// Без него snapd не даст службе ни сетевого интерфейса, ни маршрутов, и
-// туннель просто не поднимется. Само разрешение не подключается: его
-// включает человек — или магазин, если одобрит автоподключение. Поэтому
-// вместо «туннель не поднялся» говорим, что именно выполнить.
-func snapPermissionMissing() error {
+// В снапе это разрешение network-control: без него snapd не даст службе
+// ни сетевого интерфейса, ни маршрутов. Подключить его из программы
+// нельзя — это умеет только snapd, а просить его об этом строгому снапу
+// не положено. Подключает человек, одной командой, — её и отдаём окну.
+// После одобрения автоподключения в магазине подключаться оно будет само,
+// и дойдёт сюда только при установке файлом.
+func tunPermission() *permissionNeeded {
 	service := snapService()
 	if service == "" {
 		return nil
@@ -161,9 +163,9 @@ func snapPermissionMissing() error {
 	// Код 1 — «не подключено». Прочие ошибки (snapctl нет и т. п.) не
 	// повод запрещать тумблер: пусть решит сама попытка.
 	if errors.As(err, &exit) && exit.ExitCode() == 1 {
-		return fmt.Errorf("Режиму VPN нужно разрешение на управление сетью. "+
-			"Выполните в терминале:\n\nsudo snap connect %s:network-control\n\n"+
-			"и включите тумблер ещё раз.", strings.TrimSuffix(service, ".tun"))
+		return &permissionNeeded{
+			command: "sudo snap connect " + strings.TrimSuffix(service, ".tun") + ":network-control",
+		}
 	}
 	return nil
 }

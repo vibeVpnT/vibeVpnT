@@ -277,6 +277,15 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Режим VPN включён, а разрешение у снапа отобрали: подключаться
+	// бессмысленно, а сказать, что делать, — можно.
+	if vpnMode() {
+		if p := tunPermission(); p != nil {
+			writePermission(w, p)
+			return
+		}
+	}
+
 	setBusy("Подключаюсь…")
 	defer setBusy("")
 
@@ -441,6 +450,14 @@ func handleVPNMode(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": false, "error": "режим VPN пока только в Ubuntu"})
 		return
 	}
+	// До всякого перезапуска ядра: без разрешения режим всё равно не
+	// включится, а соединение моргнуло бы зря.
+	if value {
+		if p := tunPermission(); p != nil {
+			writePermission(w, p)
+			return
+		}
+	}
 
 	was := vpnMode()
 	stateMu.Lock()
@@ -490,6 +507,22 @@ func handleVPNMode(w http.ResponseWriter, r *http.Request) {
 
 	setNotice("")
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+// permissionNeeded — режиму VPN не хватает разрешения, которое человек
+// даёт сам, одной командой. Окно показывает её отдельной плашкой с
+// кнопкой «Скопировать», а не строчкой в общем потоке сообщений.
+type permissionNeeded struct {
+	command string
+}
+
+func (p *permissionNeeded) Error() string {
+	return "режиму VPN нужно разрешение: " + p.command
+}
+
+func writePermission(w http.ResponseWriter, p *permissionNeeded) {
+	logf("режиму VPN не хватает разрешения: %s", p.command)
+	writeJSON(w, map[string]any{"ok": false, "permission": p.command})
 }
 
 // handleSource — открыть исходный код в браузере.

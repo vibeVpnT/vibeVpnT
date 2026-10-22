@@ -236,6 +236,7 @@ function go(tab) {
 async function toggle() {
   if (!current || current.busy) return;
   const answer = await call(current.connected ? "/api/disconnect" : "/api/connect");
+  if (answer && answer.permission) return showPermission(answer.permission, toggle);
   if (answer && answer.error) showNotice(answer.error);
 }
 
@@ -265,7 +266,66 @@ async function toggleVPN() {
   if (!current) return;
   const answer = await busyWhile("chip-vpn", () =>
     call("/api/vpnmode?on=" + (current.vpn_mode ? "0" : "1")));
+  if (answer && answer.permission) return showPermission(answer.permission, toggleVPN);
   if (answer && answer.error) showNotice(answer.error);
+}
+
+// --- Разрешение для режима VPN ---------------------------------------
+//
+// Команду человек выполняет сам, в терминале, — окну это не по силам
+// (см. tunPermission). Плашка держится, пока её не закроют: уйти в
+// терминал и вернуться — дело не трёх секунд. «Готово» повторяет то
+// действие, на котором разрешения не хватило.
+
+let permissionRetry = null;
+
+function showPermission(command, retry) {
+  $("permission-command").textContent = command;
+  $("permission-copy").textContent = "Скопировать";
+  permissionRetry = retry;
+  $("permission").classList.remove("hidden");
+}
+
+function hidePermission() {
+  $("permission").classList.add("hidden");
+  permissionRetry = null;
+}
+
+async function retryPermission() {
+  const retry = permissionRetry;
+  hidePermission();
+  if (retry) await retry();
+}
+
+async function copyPermission() {
+  const command = $("permission-command").textContent;
+  const button = $("permission-copy");
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(command);
+    copied = true;
+  } catch (e) {
+    // Не во всяком окне есть доступ к буферу через navigator.clipboard —
+    // старый способ через выделенный текст работает почти везде.
+    const area = document.createElement("textarea");
+    area.value = command;
+    document.body.appendChild(area);
+    area.select();
+    try { copied = document.execCommand("copy"); } catch (e2) { copied = false; }
+    area.remove();
+  }
+  if (copied) {
+    button.textContent = "Скопировано";
+    setTimeout(() => { button.textContent = "Скопировать"; }, 2000);
+  } else {
+    // Совсем не вышло — выделяем команду, чтобы хватило Ctrl+C.
+    const range = document.createRange();
+    range.selectNodeContents($("permission-command"));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    button.textContent = "Нажмите Ctrl+C";
+  }
 }
 
 // Пока запрос идёт, плашка гаснет и не нажимается: смена режима

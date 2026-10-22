@@ -372,6 +372,40 @@ button.ghost:hover { color: var(--text); }
 
 button:disabled { opacity: .5; cursor: default; }
 
+/* Плашка «режиму VPN нужно разрешение» — под быстрыми переключателями. */
+.permission {
+  margin: 14px auto 0;
+  max-width: 460px;
+  background: var(--card);
+  border: 1px solid var(--accent-muted);
+  border-radius: 16px;
+  padding: 14px 16px;
+  text-align: left;
+}
+
+.permission-title { font-weight: 600; margin-bottom: 2px; }
+
+.permission-command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 12px;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 8px 8px 8px 12px;
+}
+
+.permission-command code {
+  flex: 1;
+  font: 12px/1.4 "Cascadia Mono", Consolas, monospace;
+  word-break: break-all;
+  user-select: text;
+}
+
+.permission-command button.ghost { padding: 7px 14px; font-size: 13px; flex: 0 0 auto; }
+
+.permission-actions { display: flex; gap: 10px; }
+
 #notice {
   position: fixed;
   left: 50%;

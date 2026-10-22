@@ -22,6 +22,8 @@ func tunActive() bool { return false }
 
 func startTun() error { return errors.New("режим VPN пока только в Ubuntu") }
 
+func tunPermission() *permissionNeeded { return nil }
+
 func stopTun() error { return nil }
 
 func runTunHelper() error { return errors.New("режим VPN пока только в Ubuntu") }

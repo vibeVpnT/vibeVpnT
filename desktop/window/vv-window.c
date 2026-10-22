@@ -113,6 +113,8 @@ int main(int argc, char **argv) {
     /* Ошибки JavaScript страницы — в stdout: без этого пустое окно ничего
      * не объясняет. */
     webkit_settings_set_enable_write_console_messages_to_stdout(settings, TRUE);
+    /* Кнопка «Скопировать» у команды для разрешения режима VPN. */
+    webkit_settings_set_javascript_can_access_clipboard(settings, TRUE);
 
     g_signal_connect(view, "decide-policy", G_CALLBACK(on_decide_policy), window);
     g_signal_connect(view, "notify::title", G_CALLBACK(on_title), window);

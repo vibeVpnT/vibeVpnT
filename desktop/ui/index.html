@@ -77,6 +77,23 @@
           <span class="dot"></span><span>Россия напрямую</span>
         </button>
       </div>
+
+      <!-- Режиму VPN не хватает разрешения, которое человек даёт сам,
+           одной командой в терминале (в снапе — network-control).
+           Отдельной плашкой, а не всплывающей строкой: команду надо
+           успеть скопировать, а потом вернуться и нажать «Готово». -->
+      <div id="permission" class="permission hidden">
+        <div class="permission-title">Режиму VPN нужно разрешение</div>
+        <div class="muted small">Выполните один раз в терминале — система спросит пароль:</div>
+        <div class="permission-command">
+          <code id="permission-command"></code>
+          <button class="ghost" id="permission-copy" onclick="copyPermission()">Скопировать</button>
+        </div>
+        <div class="permission-actions">
+          <button class="primary" onclick="retryPermission()">Готово — включить</button>
+          <button class="ghost" onclick="hidePermission()">Не сейчас</button>
+        </div>
+      </div>
     </section>
 
     <!-- Серверы -->

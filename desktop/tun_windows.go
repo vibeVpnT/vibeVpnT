@@ -61,6 +61,10 @@ func tunActive() bool {
 	return err == nil
 }
 
+// tunPermission — разрешений спрашивать не у кого: права администратора
+// Windows запрашивает сама, при запуске службы.
+func tunPermission() *permissionNeeded { return nil }
+
 func startTun() error {
 	if !tunSupported() {
 		return fmt.Errorf("рядом с программой нет tun2socks.exe — обновите версию")
