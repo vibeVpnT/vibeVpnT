@@ -1,0 +1,24 @@
+package com.v2ray.ang.dto.entities
+
+data class SubscriptionItem(
+    var remarks: String = "",
+    var url: String = "",
+    var enabled: Boolean = true,
+    val addedTime: Long = System.currentTimeMillis(),
+    var lastUpdated: Long = -1,
+    var autoUpdate: Boolean = false,
+    var updateInterval: Long = 1440, // in minutes, default to 24 hours
+    var prevProfile: String? = null,
+    var nextProfile: String? = null,
+    var filter: String? = null,
+    var allowInsecureUrl: Boolean = false,
+    var userAgent: String? = null,
+    var requestHeaders: String? = null,
+
+    // Остаток по данным панели: заголовок subscription-userinfo.
+    // 0 в total — без лимита, 0 в expire — бессрочно.
+    var usedTraffic: Long = 0,
+    var totalTraffic: Long = 0,
+    var expireAt: Long = 0,
+)
+
