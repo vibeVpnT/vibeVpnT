@@ -43,5 +43,9 @@ desktop/assets/geoip.dat
 .vscode/
 
 # Дампы упавших программ: makensis однажды уронил ядро прямо сюда.
+# Только файлы: каталоги с именем core — исходники (ang/core в Android,
+# src/core в hev-socks5-tunnel), без них приложение не собрать. И только
+# дампы с номером процесса — core.version нужен сборке.
 core
-core.*
+!core/
+core.[0-9]*

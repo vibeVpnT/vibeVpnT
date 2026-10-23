@@ -45,6 +45,8 @@ V2rayNG/app/google-services.json
 *.orig
 *.class
 *.jar
+# Обёртка gradle — часть сборки: без неё ./gradlew не запускается.
+!V2rayNG/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.ear
 
