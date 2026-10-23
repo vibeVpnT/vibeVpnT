@@ -703,4 +703,9 @@
         <item quantity="one">%d day</item>
         <item quantity="other">%d days</item>
     </plurals>
+    <string name="update_available_title">Version %1$s is available</string>
+    <string name="update_available_date">released %1$s</string>
+    <string name="update_button">Update</string>
+    <string name="update_downloading">%1$d%%</string>
+    <string name="update_download_failed">Update failed to download: %1$s</string>
 </resources>

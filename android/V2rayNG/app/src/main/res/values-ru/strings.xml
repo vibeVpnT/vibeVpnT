@@ -691,4 +691,9 @@
         <item quantity="many">%d дней</item>
         <item quantity="other">%d дня</item>
     </plurals>
+    <string name="update_available_title">Доступна версия %1$s</string>
+    <string name="update_available_date">от %1$s</string>
+    <string name="update_button">Обновить</string>
+    <string name="update_downloading">%1$d%%</string>
+    <string name="update_download_failed">Обновление не скачалось: %1$s</string>
 </resources>

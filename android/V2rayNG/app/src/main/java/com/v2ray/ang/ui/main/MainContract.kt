@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui.main
 
+import com.v2ray.ang.handler.AppUpdater
 import com.v2ray.ang.dto.ConnectionTestResult
 import com.v2ray.ang.dto.GroupMapItem
 import com.v2ray.ang.dto.LocateTarget
@@ -43,7 +44,8 @@ data class MainUiState(
     /** Запрос к бэкенду в процессе: на главном экране крутится ожидание. */
     val backendChecking: Boolean = false,
 
-    /** На бэкенде настроена группа поддержки — показываем чат в настройках. */
+    /** На бэкенде настроена группа поддержки — показываем чат в настройках.
+     *  Начальное значение — из прошлого ответа бэкенда (см. MainViewModel). */
     val supportEnabled: Boolean = false,
 
     /** На бэкенде настроено продление — показываем раздел «Подписка». */
@@ -63,6 +65,12 @@ data class MainUiState(
 
     /** Тумблер «российские сервисы напрямую». По умолчанию включён. */
     val ruDirect: Boolean = true,
+
+    /** Есть сборка новее установленной — в настройках кнопка «Обновить». */
+    val update: AppUpdater.Update? = null,
+
+    /** Обновление скачивается: проценты. null — не качаем. */
+    val updateProgress: Int? = null,
 
     /** Сколько серверов в каждой группе. Пустые на экране не показываем:
      *  раздел вроде «Local (0)» занимал место, а нажать в нём было не на что. */

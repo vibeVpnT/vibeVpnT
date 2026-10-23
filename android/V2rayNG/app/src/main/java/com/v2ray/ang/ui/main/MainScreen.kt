@@ -240,6 +240,9 @@ fun MainScreen(
                 ruDirect = uiState.ruDirect,
                 onRuDirectChange = mainViewModel::setRuDirect,
                 onNavigate = onNavigate,
+                update = uiState.update,
+                updateProgress = uiState.updateProgress,
+                onUpdate = mainViewModel::startUpdate,
                 modifier = content,
             )
         }

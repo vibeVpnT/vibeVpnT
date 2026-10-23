@@ -15,6 +15,7 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -116,6 +117,72 @@ object MobileBackend {
     /** Настроен ли бэкенд вообще. Пустой адрес — обычный клиент без него. */
     val isConfigured: Boolean get() = Brand.backendUrl.isNotBlank()
 
+    // --- Адрес бэкенда -------------------------------------------------------
+
+    /**
+     * Домен, который назвал сам бэкенд (api_base в /api/v1/version), —
+     * без пути приложения. Пусто — ходим туда, куда зашито в сборке.
+     * Так бэкенд может переехать на новый домен без новой сборки.
+     */
+    private const val PREF_API_BASE = "pref_backend_api_base"
+
+    /** Адрес бэкенда с путём приложения: https://m.t-forge.online/proxyvv. */
+    val baseUrl: String
+        get() {
+            val brand = Brand.backendUrl.trimEnd('/')
+            val domain = MmkvManager.decodeSettingsString(PREF_API_BASE, "").orEmpty()
+            if (domain.isBlank()) return brand
+            val appPath = brand.toHttpUrlOrNull()?.encodedPath.orEmpty().trimEnd('/')
+            return domain.trimEnd('/') + appPath
+        }
+
+    /** Адрес, зашитый в сборку, — запасной путь, если новый домен не отвечает. */
+    private val brandBaseUrl: String get() = Brand.backendUrl.trimEnd('/')
+
+    /**
+     * Запоминает домен, названный бэкендом. Только https и только
+     * домен целиком: из-за опечатки в настройках приложение не должно
+     * уйти по адресу, где его никто не ждёт.
+     */
+    private fun rememberApiBase(apiBase: String?) {
+        val value = apiBase.orEmpty().trim().trimEnd('/')
+        if (value.isBlank()) return
+        val url = value.toHttpUrlOrNull()
+        if (url == null || url.scheme != "https" || url.encodedPath.trimEnd('/').isNotEmpty()) {
+            LogUtil.w(AppConfig.TAG, "Бэкенд назвал негодный адрес: $value")
+            return
+        }
+        val domain = "https://${url.host}" + if (url.port != 443) ":${url.port}" else ""
+        if (domain != MmkvManager.decodeSettingsString(PREF_API_BASE, "")) {
+            LogUtil.i(AppConfig.TAG, "Бэкенд теперь по адресу $domain")
+            MmkvManager.encodeSettings(PREF_API_BASE, domain)
+        }
+    }
+
+    // --- Что настроено на бэкенде ------------------------------------------
+
+    /**
+     * Есть ли чат поддержки и раздел «Подписка» — по последнему ответу
+     * бэкенда, сохранённому на устройстве.
+     *
+     * Раньше это жило только в памяти и при каждом запуске начиналось с
+     * «нет»: пока /start не ответил (до двадцати секунд) или если он не
+     * ответил вовсе, «Поддержка» в настройках вела в Telegram, а потом —
+     * в чат. Теперь экран сразу знает, что было в прошлый раз.
+     *
+     * Чат до первого ответа считаем включённым: он настроен у всех наших
+     * приложений, а Telegram — запасной путь на случай, когда бэкенд прямо
+     * сказал, что чата нет.
+     */
+    private const val PREF_SUPPORT_ENABLED = "pref_backend_support_enabled"
+    private const val PREF_RENEW_ENABLED = "pref_backend_renew_enabled"
+
+    val supportEnabledCached: Boolean
+        get() = MmkvManager.decodeSettingsBool(PREF_SUPPORT_ENABLED, isConfigured)
+
+    val renewEnabledCached: Boolean
+        get() = MmkvManager.decodeSettingsBool(PREF_RENEW_ENABLED, false)
+
     /**
      * Android ID — то, чем устройство представляется бэкенду.
      *
@@ -160,6 +227,11 @@ object MobileBackend {
             else -> Status.NETWORK_ERROR
         }
 
+        if (status != Status.NETWORK_ERROR) {
+            MmkvManager.encodeSettings(PREF_SUPPORT_ENABLED, answer.support_enabled)
+            MmkvManager.encodeSettings(PREF_RENEW_ENABLED, answer.renew_enabled)
+        }
+
         val url = answer.subscription_url.orEmpty()
         // Подписку заводим и для истёкшей: когда человек продлит, адрес
         // остаётся тем же, и приложение подхватит серверы само.
@@ -200,7 +272,7 @@ object MobileBackend {
         )
 
         val request = Request.Builder()
-            .url(Brand.backendUrl.trimEnd('/') + START_PATH)
+            .url(baseUrl + START_PATH)
             .post(JsonUtil.toJson(payload).toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -336,7 +408,7 @@ object MobileBackend {
         val androidId = deviceId(context)
         if (!isConfigured || androidId.isBlank()) return@withContext null
 
-        val url = StringBuilder(Brand.backendUrl.trimEnd('/'))
+        val url = StringBuilder(baseUrl)
             .append(SUPPORT_MESSAGES_PATH)
             .append("?android_id=").append(androidId)
             .append("&limit=").append(limit)
@@ -357,7 +429,7 @@ object MobileBackend {
 
             val body = JsonUtil.toJson(mapOf("android_id" to androidId, "text" to text))
             val request = Request.Builder()
-                .url(Brand.backendUrl.trimEnd('/') + SUPPORT_SEND_PATH)
+                .url(baseUrl + SUPPORT_SEND_PATH)
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
 
@@ -424,7 +496,7 @@ object MobileBackend {
             )
         )
         val request = Request.Builder()
-            .url(Brand.backendUrl.trimEnd('/') + LINK_REQUEST_PATH)
+            .url(baseUrl + LINK_REQUEST_PATH)
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -484,7 +556,7 @@ object MobileBackend {
             "android_sdk" to Build.VERSION.SDK_INT,
         )
         val request = Request.Builder()
-            .url(Brand.backendUrl.trimEnd('/') + path)
+            .url(baseUrl + path)
             .post(JsonUtil.toJson(payload).toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -499,6 +571,8 @@ object MobileBackend {
             }
             return@withContext Result(failure)
         }
+
+        MmkvManager.encodeSettings(PREF_SUPPORT_ENABLED, answer.support_enabled)
 
         val url = answer.subscription_url.orEmpty()
         val imported = if (url.isNotBlank()) {
@@ -515,6 +589,48 @@ object MobileBackend {
             serversImported = imported,
             supportEnabled = answer.support_enabled,
         )
+    }
+
+    // --- Версия приложения ---------------------------------------------------
+
+    private const val VERSION_PATH = "/api/v1/version"
+
+    /** Последняя выложенная сборка — как её описывает бэкенд. */
+    data class Release(
+        val version_name: String? = null,
+        val version_code: Long = 0,
+        /** Когда выложена, ISO 8601 с часовым поясом. */
+        val released_at: String? = null,
+        val apk_url: String? = null,
+        val apk_size: Long = 0,
+        val apk_sha256: String? = null,
+    )
+
+    private data class VersionResponse(
+        val status: String? = null,
+        val api_base: String? = null,
+        val latest: Release? = null,
+    )
+
+    /**
+     * Спрашивает последнюю версию и заодно — на какой домен ходить.
+     *
+     * Сначала туда, куда ходим сейчас; не ответил, а адрес не тот, что в
+     * сборке, — туда, что в сборке. Без этого неудачный api_base отрезал
+     * бы приложение от бэкенда насовсем: исправить его можно было бы
+     * только этим же запросом. null — не достучались никуда.
+     */
+    suspend fun latestRelease(): Release? = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext null
+
+        val answer = get(baseUrl + VERSION_PATH, VersionResponse::class.java)
+            ?: brandBaseUrl.takeIf { it != baseUrl }
+                ?.let { get(it + VERSION_PATH, VersionResponse::class.java) }
+            ?: return@withContext null
+
+        if (answer.status != "ok") return@withContext null
+        rememberApiBase(answer.api_base)
+        answer.latest
     }
 
     /** Что зашито в QR: код, который сканирует сторона с подпиской. */
@@ -594,7 +710,7 @@ object MobileBackend {
     suspend fun syncRouting(force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         if (!isConfigured) return@withContext false
 
-        val answer = get(Brand.backendUrl.trimEnd('/') + ROUTING_PATH, RoutingResponse::class.java)
+        val answer = get(baseUrl + ROUTING_PATH, RoutingResponse::class.java)
             ?: return@withContext false
 
         if (!force && answer.version == appliedRoutingVersion) {
@@ -842,7 +958,7 @@ object MobileBackend {
         if (!isConfigured || androidId.isBlank()) return@withContext null to null
 
         val request = Request.Builder()
-            .url(Brand.backendUrl.trimEnd('/') + RENEW_RECEIPT_PATH)
+            .url(baseUrl + RENEW_RECEIPT_PATH)
             .post(receiptBody(androidId, tier, bytes, fileName))
             .build()
 
@@ -897,7 +1013,7 @@ object MobileBackend {
 
     private fun <T> post(path: String, payload: Map<String, Any?>, cls: Class<T>): T? {
         val request = Request.Builder()
-            .url(Brand.backendUrl.trimEnd('/') + path)
+            .url(baseUrl + path)
             .post(JsonUtil.toJson(payload).toRequestBody("application/json".toMediaType()))
             .build()
 

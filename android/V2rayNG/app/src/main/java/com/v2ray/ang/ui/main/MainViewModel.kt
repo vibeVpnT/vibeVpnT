@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.handler.AppUpdater
 import com.v2ray.ang.handler.MobileBackend
 import com.v2ray.ang.handler.PushManager
 import com.v2ray.ang.handler.isProfileInUse
@@ -89,6 +90,10 @@ class MainViewModel(
             confirmRemove = dataSource.getConfirmRemove(),
             doubleColumnDisplay = dataSource.getDoubleColumnDisplay(),
             ruDirect = MobileBackend.ruDirectEnabled,
+            // Что было в прошлый раз — сразу, не дожидаясь бэкенда: иначе
+            // до его ответа «Поддержка» вела в Telegram, а после — в чат.
+            supportEnabled = MobileBackend.supportEnabledCached,
+            renewEnabled = MobileBackend.renewEnabledCached,
         )
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
@@ -350,6 +355,50 @@ class MainViewModel(
             }
         }
         provisionSubscription()
+        checkUpdate()
+    }
+
+    // ---------- Обновление приложения ----------
+
+    /** Есть ли сборка новее — спрашиваем бэкенд при каждом запуске. */
+    fun checkUpdate() {
+        if (!MobileBackend.isConfigured) return
+        viewModelScope.launch(ioDispatcher) {
+            val update = try {
+                AppUpdater.check(getApplication())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                LogUtil.e(AppConfig.TAG, "Не узнали, есть ли обновление", error)
+                null
+            }
+            _uiState.update { it.copy(update = update) }
+        }
+    }
+
+    /** Кнопка «Обновить»: скачать apk и отдать системе на установку. */
+    fun startUpdate() {
+        val update = _uiState.value.update ?: return
+        if (_uiState.value.updateProgress != null) return
+        _uiState.update { it.copy(updateProgress = 0) }
+
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                val file = AppUpdater.download(getApplication(), update) { percent ->
+                    _uiState.update { it.copy(updateProgress = percent) }
+                }
+                withContext(Dispatchers.Main) { AppUpdater.install(getApplication(), file) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                LogUtil.e(AppConfig.TAG, "Обновление не скачалось", error)
+                withContext(Dispatchers.Main) {
+                    toastError(getString(R.string.update_download_failed, error.message.orEmpty()))
+                }
+            } finally {
+                _uiState.update { it.copy(updateProgress = null) }
+            }
+        }
     }
 
     /**

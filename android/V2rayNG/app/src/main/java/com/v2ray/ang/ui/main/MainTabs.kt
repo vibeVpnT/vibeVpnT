@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.handler.AppUpdater
 import com.v2ray.ang.ui.compose.AppDivider
 import com.v2ray.ang.ui.compose.Brand
 import com.v2ray.ang.util.Utils
@@ -90,6 +91,9 @@ fun SettingsTab(
     ruDirect: Boolean,
     onRuDirectChange: (Boolean) -> Unit,
     onNavigate: (MainDestination) -> Unit,
+    update: AppUpdater.Update?,
+    updateProgress: Int?,
+    onUpdate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -126,6 +130,12 @@ fun SettingsTab(
             .padding(horizontal = 16.dp),
     ) {
         Spacer(Modifier.height(12.dp))
+        // Только когда есть сборка новее: кнопка, которая ничего не
+        // обновляет, — лишний шум.
+        if (update != null) {
+            UpdateCard(update = update, progress = updateProgress, onUpdate = onUpdate)
+            Spacer(Modifier.height(16.dp))
+        }
         RuDirectSwitch(checked = ruDirect, onChange = onRuDirectChange)
 
         Spacer(Modifier.height(16.dp))
@@ -190,6 +200,51 @@ fun SettingsTab(
  * открываются. Выключать стоит, только если нужно, чтобы вообще всё шло
  * через сервер.
  */
+/** Доступна новая версия: что за версия, когда вышла, и кнопка. */
+@Composable
+private fun UpdateCard(update: AppUpdater.Update, progress: Int?, onUpdate: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brand.card)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.update_available_title, update.versionName),
+                color = Brand.onDark,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            if (update.releasedAt.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.update_available_date, update.releasedAt),
+                    color = Brand.onDarkMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+        }
+        Text(
+            text = if (progress == null) {
+                stringResource(R.string.update_button)
+            } else {
+                stringResource(R.string.update_downloading, progress)
+            },
+            color = Brand.background,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brand.accent)
+                .clickable(enabled = progress == null, onClick = onUpdate)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+}
+
 @Composable
 private fun RuDirectSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
