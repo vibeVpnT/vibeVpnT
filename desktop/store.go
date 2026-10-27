@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,12 +9,17 @@ import (
 
 // Состояние, которое переживает перезапуск.
 //
-// Регистрации в приложении нет вовсе: единственное, чем оно себя
-// называет, — DeviceID. Он же подставляется в запросы к бэкенду вместо
-// Android ID телефона, поэтому и формат тот же: шестнадцать
-// шестнадцатеричных знаков.
+// Программа входит в аккаунт и дальше предъявляет бэкенду только токен
+// своей сессии. DeviceID — наследство старых версий, которые называли
+// себя им: при первом запуске новой он один раз меняется на сессию и
+// стирается.
 type state struct {
-	DeviceID         string   `json:"device_id"`
+	DeviceID      string `json:"device_id,omitempty"`
+	SessionToken  string `json:"session_token,omitempty"`
+	AccountNumber string `json:"account_number,omitempty"`
+	// Человек подтвердил, что сохранил номер. Пока нет — после входа
+	// окно показывает номер и ждёт «Я сохранил».
+	NumberConfirmed  bool     `json:"number_confirmed,omitempty"`
 	SubscriptionURL  string   `json:"subscription_url"`
 	SubscriptionName string   `json:"subscription_name"`
 	Servers          []server `json:"servers"`
@@ -97,10 +100,41 @@ func loadState() {
 	if err == nil {
 		_ = json.Unmarshal(raw, &st)
 	}
-	if len(st.DeviceID) != 16 {
-		st.DeviceID = newDeviceID()
-		saveLocked()
-	}
+}
+
+func sessionToken() string {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	return st.SessionToken
+}
+
+// setSession — вошли в аккаунт. Прежние подписка и серверы — от
+// другого аккаунта или от старого DeviceID: их заменит свежий ответ.
+func setSession(answer *sessionAnswer) {
+	stateMu.Lock()
+	st.SessionToken = answer.Token
+	st.AccountNumber = answer.AccountNumber
+	st.NumberConfirmed = answer.Confirmed
+	st.DeviceID = ""
+	saveLocked()
+	stateMu.Unlock()
+}
+
+// dropSession — из аккаунта вышли: здесь или на сервере. Подписка
+// уходит вместе с ним — она принадлежала аккаунту.
+func dropSession() {
+	stateMu.Lock()
+	st.SessionToken = ""
+	st.AccountNumber = ""
+	st.NumberConfirmed = false
+	st.SubscriptionURL = ""
+	st.Servers = nil
+	st.SelectedTag = ""
+	st.DaysLeft = nil
+	st.Username = ""
+	st.RenewRequestID, st.RenewRequestStatus = 0, ""
+	saveLocked()
+	stateMu.Unlock()
 }
 
 func saveLocked() {
@@ -118,14 +152,4 @@ func save() {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	saveLocked()
-}
-
-// newDeviceID — случайный, а не из железа: привязываться к серийникам
-// незачем, а потерять файл состояния — значит просто войти заново.
-func newDeviceID() string {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return "0000000000000000"
-	}
-	return hex.EncodeToString(buf)
 }

@@ -7,25 +7,54 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<!-- Пока подписки нет, ничего, кроме входа, показывать нечего:
-     регистрации в приложении не существует. -->
+<!-- Вход в аккаунт: по номеру, новым аккаунтом или по коду с другого
+     устройства. Почты и паролей нет — только номер. -->
 <div id="login" class="screen hidden">
   <img class="logo" src="logo.png" alt="">
-  <h1>Вход по QR</h1>
-  <p class="hint">Откройте приложение на телефоне, где подписка уже есть,
-     нажмите «Добавить устройство» и отсканируйте этот код.</p>
+  <h1>Вход в аккаунт</h1>
 
-  <div id="login-empty">
-    <button class="primary" onclick="showCode()">Показать код</button>
+  <div id="login-main" class="login-box">
+    <input id="number" class="field" inputmode="numeric" autocomplete="off"
+           placeholder="Номер аккаунта: 16 цифр"
+           onkeydown="if (event.key === 'Enter') loginByNumber()">
+    <div id="login-error" class="error small"></div>
+    <button class="primary wide" onclick="loginByNumber()">Войти</button>
+    <button class="ghost wide" onclick="createAccount()">Создать аккаунт</button>
+    <button class="ghost wide" onclick="showCode()">Войти по коду с другого устройства</button>
   </div>
 
   <div id="login-code" class="hidden">
+    <p class="hint">Отсканируйте код в приложении, где вы уже вошли
+       («Добавить устройство»), или введите цифры в веб-кабинете.</p>
     <img id="qr" alt="">
     <div id="digits"></div>
     <div id="expires" class="muted"></div>
-    <div class="waiting">Ждём сканирования…</div>
+    <div class="waiting">Ждём подтверждения…</div>
     <button class="ghost" onclick="showCode()">Новый код</button>
+    <button class="ghost" onclick="hideCode()">Назад</button>
   </div>
+</div>
+
+<!-- Номер показываем сразу после создания: другого способа войти нет. -->
+<div id="reveal" class="screen hidden">
+  <img class="logo" src="logo.png" alt="">
+  <h1>Ваш номер аккаунта</h1>
+  <div id="reveal-number" class="account-number"></div>
+  <button class="ghost" onclick="copyNumber(this)">Скопировать</button>
+  <p class="hint">Это единственный способ войти. Сохраните номер в
+     менеджере паролей или запишите. Восстановить его можно только через
+     поддержку и только если была оплата.</p>
+  <button class="primary" onclick="confirmNumber()">Я сохранил номер</button>
+</div>
+
+<!-- Вошли, а подписки у аккаунта нет. -->
+<div id="offer" class="screen hidden">
+  <img class="logo" src="logo.png" alt="">
+  <h1 id="offer-title">Подписки пока нет</h1>
+  <p class="hint" id="offer-text"></p>
+  <button class="primary" id="offer-trial" onclick="claimTrial()">Получить пробный период</button>
+  <div id="offer-error" class="error small"></div>
+  <button class="ghost" onclick="logoutAccount()">Выйти из аккаунта</button>
 </div>
 
 <div id="app" class="hidden">
@@ -187,6 +216,18 @@
             адреса дата-центров — через сервер они не открываются.</div>
         </div>
         <span id="ru-switch" class="toggle"></span>
+      </div>
+
+      <div class="card about">
+        <div>Аккаунт</div>
+        <div class="muted small">Номер: <span id="settings-number">•••• •••• •••• ••••</span>
+          <a href="#" onclick="toggleNumber(); return false">показать</a></div>
+        <div class="muted small">По этому номеру входят на других устройствах и в веб-кабинете.</div>
+      </div>
+
+      <div class="card danger" onclick="logoutAccount()">
+        <div>Выйти из аккаунта</div>
+        <div class="muted small">Соединение закроется; войти снова можно по номеру</div>
       </div>
 
       <div class="card" onclick="refresh()">

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"runtime"
@@ -50,6 +51,13 @@ type uiState struct {
 	Busy         string   `json:"busy"`
 	Login        *loginUI `json:"login"`
 	ProxyPorts   [2]int   `json:"proxy_ports"`
+
+	// Вошли в аккаунт, но подписки у него нет: окно предлагает триал.
+	Subscribed      bool   `json:"subscribed"`
+	SubStatus       string `json:"sub_status"`
+	TrialDays       int    `json:"trial_days"`
+	AccountNumber   string `json:"account_number"`
+	NumberConfirmed bool   `json:"number_confirmed"`
 }
 
 type loginUI struct {
@@ -64,6 +72,9 @@ var (
 	busy    string
 	login   *loginUI
 	routing *routingAnswer
+	// Что бэкенд в последний раз сказал о подписке аккаунта.
+	subStatus string
+	trialDays int
 )
 
 func setNotice(text string) {
@@ -90,7 +101,9 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 	servers := append([]server(nil), st.Servers...)
 	selected := st.SelectedTag
 	days := st.DaysLeft
-	authorized := st.SubscriptionURL != ""
+	authorized := st.SessionToken != ""
+	subscribed := st.SubscriptionURL != ""
+	number, confirmed := st.AccountNumber, st.NumberConfirmed
 	stateMu.Unlock()
 
 	uiMu.Lock()
@@ -111,14 +124,20 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		Busy:         busy,
 		Login:        login,
 		ProxyPorts:   [2]int{socksPort, httpPort},
+
+		Subscribed:      subscribed,
+		SubStatus:       subStatus,
+		TrialDays:       trialDays,
+		AccountNumber:   number,
+		NumberConfirmed: confirmed,
 	}
 	uiMu.Unlock()
 
 	writeJSON(w, out)
 }
 
-// handleLogin — показать код. Регистрации нет: единственный вход —
-// сканировать этот QR телефоном, где подписка уже есть.
+// handleLogin — показать код. Его сканирует устройство, уже вошедшее в
+// аккаунт, или код вводят в веб-кабинете.
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	answer, err := requestJoinCode()
 	if err != nil {
@@ -143,13 +162,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	uiMu.Unlock()
 
-	go waitForJoin(answer.Code, answer.TTLSeconds)
+	go waitForJoin(answer.Code, answer.WaitSecret, answer.TTLSeconds)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
 // waitForJoin — ждём, пока код отсканируют. Уведомить нас бэкенд не
 // может, поэтому спрашиваем сами, пока код жив.
-func waitForJoin(code string, ttl int) {
+func waitForJoin(code, secret string, ttl int) {
 	deadline := time.Now().Add(time.Duration(ttl) * time.Second)
 
 	for time.Now().Before(deadline) {
@@ -168,17 +187,15 @@ func waitForJoin(code string, ttl int) {
 		}
 		uiMu.Unlock()
 
-		answer, err := joinStatus(code)
-		if err != nil || answer.SubscriptionURL == "" {
+		answer, err := joinStatus(code, secret)
+		if err != nil || answer.Token == "" {
 			continue
 		}
 
-		if applySubscription(answer) {
-			setNotice("Подписка получена")
-		}
 		uiMu.Lock()
 		login = nil
 		uiMu.Unlock()
+		enterAccount(answer)
 		return
 	}
 
@@ -189,10 +206,43 @@ func waitForJoin(code string, ttl int) {
 	uiMu.Unlock()
 }
 
-// applySubscription — записываем выданную подписку и тянем серверы.
-// false — серверы скачать не вышло, и об этом уже сказано человеку.
+// enterAccount — вошли: запоминаем сессию и спрашиваем подписку.
+func enterAccount(answer *sessionAnswer) {
+	setSession(answer)
+	logf("вход в аккаунт выполнен")
+	if me, err := refreshSubscription(); err == nil {
+		if applySubscription(me) {
+			setNotice("Подписка получена")
+		}
+	} else {
+		setNotice("Вошли, но подписку получить не вышло: " + err.Error())
+	}
+	reloadRouting()
+}
+
+// applySubscription — записываем подписку аккаунта и тянем серверы.
+// false — подписки нет или серверы скачать не вышло; во втором случае
+// об этом уже сказано человеку.
 func applySubscription(answer *startAnswer) bool {
+	uiMu.Lock()
+	subStatus, trialDays = answer.Status, answer.TrialDays
+	uiMu.Unlock()
+
 	stateMu.Lock()
+	if answer.AccountNumber != "" {
+		st.AccountNumber = answer.AccountNumber
+		st.NumberConfirmed = answer.Confirmed
+	}
+	if answer.SubscriptionURL == "" {
+		// Ключа у аккаунта нет: пропал из панели или его не было вовсе.
+		st.SubscriptionURL = ""
+		st.Servers = nil
+		st.SelectedTag = ""
+		st.DaysLeft = nil
+		saveLocked()
+		stateMu.Unlock()
+		return false
+	}
 	st.SubscriptionURL = answer.SubscriptionURL
 	st.SubscriptionName = first(answer.SubscriptionName, brandSubName)
 	st.Username = answer.Username
@@ -535,10 +585,12 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	setBusy("Обновляю подписку…")
 	defer setBusy("")
 
-	if answer, err := refreshSubscription(); err == nil && answer.SubscriptionURL != "" {
+	if answer, err := refreshSubscription(); err == nil {
 		if applySubscription(answer) {
 			setNotice("Подписка обновлена")
 		}
+	} else if errors.Is(err, errUnauthorized) {
+		setNotice(err.Error())
 	} else {
 		reloadServers()
 		reloadRouting()

@@ -37,14 +37,29 @@ function setText(element, text) {
 function render(s) {
   current = s;
 
-  const needLogin = !s.authorized;
-  $("login").classList.toggle("hidden", !needLogin);
-  $("app").classList.toggle("hidden", needLogin);
+  // Какой экран: вход, номер после создания, «подписки нет» или сама
+  // программа.
+  const screen = !s.authorized ? "login"
+    : !s.number_confirmed ? "reveal"
+    : !s.subscribed ? "offer"
+    : "app";
+  for (const id of ["login", "reveal", "offer", "app"]) {
+    $(id).classList.toggle("hidden", id !== screen);
+  }
 
-  if (needLogin) {
+  if (screen === "login") {
     renderLogin(s.login);
     return;
   }
+  if (screen === "reveal") {
+    setText($("reveal-number"), s.account_number || "");
+    return;
+  }
+  if (screen === "offer") {
+    renderOffer(s);
+    return;
+  }
+  if (numberShown) setText($("settings-number"), s.account_number || "");
 
   $("power").classList.toggle("on", s.connected);
   setText($("timer"), clock(s.seconds));
@@ -105,8 +120,8 @@ function warnToRenew() {
 }
 
 function renderLogin(login) {
-  const has = login && login.code;
-  $("login-empty").classList.toggle("hidden", !!has);
+  const has = codeWanted && login && login.code;
+  $("login-main").classList.toggle("hidden", !!has);
   $("login-code").classList.toggle("hidden", !has);
   if (!has) return;
 
@@ -245,9 +260,81 @@ async function sortBy(by) { await call("/api/sort?by=" + by); }
 async function pingAll() { await call("/api/ping"); }
 async function refresh() { await call("/api/refresh"); }
 
+// --- Аккаунт ----------------------------------------------------------
+
+let codeWanted = false;
+let numberShown = false;
+
 async function showCode() {
+  codeWanted = true;
   const answer = await call("/api/login");
   if (answer && answer.error) showNotice(answer.error);
+}
+
+function hideCode() { codeWanted = false; }
+
+async function loginByNumber() {
+  setText($("login-error"), "");
+  const digits = $("number").value.replace(/\D/g, "");
+  if (digits.length !== 16) {
+    setText($("login-error"), "В номере аккаунта 16 цифр");
+    return;
+  }
+  const answer = await call("/api/account/login", { number: digits });
+  if (answer && answer.error) setText($("login-error"), answer.error);
+  else $("number").value = "";
+}
+
+async function createAccount() {
+  setText($("login-error"), "");
+  const answer = await call("/api/account/create", {});
+  if (answer && answer.error) setText($("login-error"), answer.error);
+}
+
+async function confirmNumber() { await call("/api/account/confirm", {}); }
+
+async function copyNumber(button) {
+  const number = (current && current.account_number || "").replace(/ /g, "");
+  try {
+    await navigator.clipboard.writeText(number);
+    button.textContent = "Скопировано";
+  } catch (e) {
+    button.textContent = "Выделите номер и нажмите Ctrl+C";
+  }
+}
+
+const OFFER_TITLES = {
+  offer: "Подписки пока нет",
+  unavailable: "Выдача подписок сейчас закрыта",
+  rate_limited: "Пробный период с этого адреса уже получали",
+};
+
+function renderOffer(s) {
+  setText($("offer-title"), OFFER_TITLES[s.sub_status] || "Подписки пока нет");
+  const trial = s.sub_status === "offer" || !s.sub_status;
+  $("offer-trial").classList.toggle("hidden", !trial);
+  setText($("offer-trial"), s.trial_days
+    ? `Получить пробный период: ${s.trial_days} ${plural(s.trial_days, "день", "дня", "дней")}`
+    : "Получить пробный период");
+  setText($("offer-text"), `Аккаунт ${s.account_number || ""}. Оплатить подписку можно и в веб-кабинете.`);
+  $("offer-trial").disabled = !!s.busy;
+}
+
+async function claimTrial() {
+  setText($("offer-error"), "");
+  const answer = await call("/api/account/trial", {});
+  if (answer && answer.error) setText($("offer-error"), answer.error);
+}
+
+function toggleNumber() {
+  numberShown = !numberShown;
+  setText($("settings-number"), numberShown && current ? current.account_number : "•••• •••• •••• ••••");
+}
+
+async function logoutAccount() {
+  if (!confirm("Выйти из аккаунта на этом компьютере? Соединение закроется.")) return;
+  codeWanted = false;
+  await call("/api/account/logout", {});
 }
 
 async function toggleRu() {

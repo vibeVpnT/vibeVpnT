@@ -65,6 +65,28 @@ html, body {
 
 .waiting { color: var(--accent); font-size: 12px; }
 
+.login-box { display: flex; flex-direction: column; gap: 10px; width: 320px; }
+.field {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--divider);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  text-align: center;
+  user-select: text;
+}
+.field:focus { outline: none; border-color: var(--accent); }
+button.wide { width: 100%; }
+.error { color: var(--ping-bad); min-height: 1.2em; }
+.account-number {
+  font: 500 28px/1.3 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 2px;
+  user-select: all;
+}
+
 /* --- Каркас -------------------------------------------------------- */
 
 #app { height: 100%; display: flex; }

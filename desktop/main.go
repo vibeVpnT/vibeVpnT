@@ -131,6 +131,11 @@ func routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/state", handleState)
 	mux.HandleFunc("/api/login", handleLogin)
+	mux.HandleFunc("/api/account/login", handleAccountLogin)
+	mux.HandleFunc("/api/account/create", handleAccountCreate)
+	mux.HandleFunc("/api/account/confirm", handleAccountConfirm)
+	mux.HandleFunc("/api/account/trial", handleAccountTrial)
+	mux.HandleFunc("/api/account/logout", handleAccountLogout)
 	mux.HandleFunc("/api/connect", handleConnect)
 	mux.HandleFunc("/api/disconnect", handleDisconnect)
 	mux.HandleFunc("/api/select", handleSelect)
@@ -189,7 +194,13 @@ func guard(next http.Handler) http.Handler {
 // сразу, а не после похода на сервер.
 func runStartupSync() {
 	reloadRouting()
-	if answer, err := refreshSubscription(); err == nil && answer.SubscriptionURL != "" {
+	migrateLegacy()
+	if sessionToken() == "" {
+		// Не вошли: серверы прошлого раза ещё годятся, пока жив ключ.
+		reloadServers()
+		return
+	}
+	if answer, err := refreshSubscription(); err == nil {
 		_ = applySubscription(answer)
 	} else {
 		if err != nil {

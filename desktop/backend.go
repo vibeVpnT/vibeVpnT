@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,8 +12,9 @@ import (
 )
 
 // Наш бэкенд: тот же, что у мобильного приложения, и те же ручки.
-// Регистрации нет — есть вход по коду: здесь показывают QR, телефон с
-// подпиской его сканирует.
+// Личность — аккаунт: вход по номеру или по коду с другого устройства
+// (здесь показывают QR, вошедшее устройство его сканирует). Дальше
+// программа предъявляет только токен своей сессии.
 
 var httpClient = &http.Client{Timeout: 25 * time.Second}
 
@@ -29,15 +31,32 @@ type startAnswer struct {
 	Username         string `json:"username"`
 	DaysLeft         *int   `json:"days_left"`
 	RoutingVersion   int    `json:"routing_version"`
+	AccountNumber    string `json:"account_number"`
+	Confirmed        bool   `json:"confirmed"`
+	TrialDays        int    `json:"trial_days"`
 	Message          string `json:"message"`
+}
+
+// Ответ на вход: новая сессия.
+type sessionAnswer struct {
+	Status        string `json:"status"`
+	Token         string `json:"token"`
+	AccountNumber string `json:"account_number"`
+	Confirmed     bool   `json:"confirmed"`
+	Message       string `json:"message"`
 }
 
 type codeAnswer struct {
 	Status     string `json:"status"`
 	Code       string `json:"code"`
+	WaitSecret string `json:"wait_secret"`
 	TTLSeconds int    `json:"ttl_seconds"`
 	Message    string `json:"message"`
 }
+
+// errUnauthorized — бэкенд не узнал сессию: из неё вышли на другом
+// устройстве или перевыпустили номер. Войти придётся заново.
+var errUnauthorized = errors.New("сессия закончилась, войдите заново")
 
 func postJSON(path string, body any, out any) error {
 	return postJSONWith(httpClient, path, body, out)
@@ -48,11 +67,25 @@ func postJSONWith(client *http.Client, path string, body any, out any) error {
 	if err != nil {
 		return err
 	}
-	resp, err := client.Post(brandBackend+path, "application/json", bytes.NewReader(raw))
+	req, err := http.NewRequest(http.MethodPost, brandBackend+path, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token := sessionToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		dropSession()
+		return errUnauthorized
+	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
@@ -71,11 +104,12 @@ func postJSONWith(client *http.Client, path string, body any, out any) error {
 	return nil
 }
 
-// Чем приложение представляется бэкенду. Поля те же, что шлёт телефон:
-// на той стороне одна таблица устройств на все платформы.
+// Чем программа представляется бэкенду. Только для списка устройств
+// аккаунта и для поддержки: ни одно поле её не опознаёт.
 func deviceFields() map[string]any {
 	return map[string]any{
-		"android_id":      st.DeviceID,
+		"platform":        runtime.GOOS,
+		"device_name":     "Компьютер · " + platformName(),
 		"app_version":     appVersion,
 		"device_brand":    "PC",
 		"device_model":    platformName(),
@@ -84,10 +118,54 @@ func deviceFields() map[string]any {
 	}
 }
 
-// requestJoinCode — просим код, который покажем QR-кодом.
+// sessionFrom — ответ на вход в пригодном виде. Отказ приходит обычным
+// ответом с причиной, и показать её человеку должен тот, кто вызвал.
+func sessionFrom(out *sessionAnswer) (*sessionAnswer, error) {
+	if out.Token == "" {
+		return nil, fmt.Errorf("%s", first(out.Message, out.Status, "сервер не впустил"))
+	}
+	return out, nil
+}
+
+// createAccount — новый аккаунт: номер и сессия. Подписки у него ещё нет.
+func createAccount() (*sessionAnswer, error) {
+	var out sessionAnswer
+	if err := postJSON("/api/v1/account/create", deviceFields(), &out); err != nil {
+		return nil, err
+	}
+	return sessionFrom(&out)
+}
+
+// loginByNumber — вход по номеру аккаунта.
+func loginByNumber(number string) (*sessionAnswer, error) {
+	body := deviceFields()
+	body["number"] = number
+
+	var out sessionAnswer
+	if err := postJSON("/api/v1/account/login", body, &out); err != nil {
+		return nil, err
+	}
+	return sessionFrom(&out)
+}
+
+// migrateSession — старая версия знала себя по DeviceID. Один раз меняем
+// его на сессию в аккаунте той же подписки и больше не шлём.
+func migrateSession(deviceID string) (*sessionAnswer, error) {
+	body := deviceFields()
+	body["android_id"] = deviceID
+
+	var out sessionAnswer
+	if err := postJSON("/api/v1/session/migrate", body, &out); err != nil {
+		return nil, err
+	}
+	return sessionFrom(&out)
+}
+
+// requestJoinCode — просим код, который покажем QR-кодом. Аккаунт для
+// этого не нужен; секрет ожидания знает только эта программа.
 func requestJoinCode() (*codeAnswer, error) {
 	var out codeAnswer
-	if err := postJSON("/api/v1/link/request", deviceFields(), &out); err != nil {
+	if err := postJSON("/api/v1/code/request", map[string]any{}, &out); err != nil {
 		return nil, err
 	}
 	if out.Status != "ok" || out.Code == "" {
@@ -96,28 +174,46 @@ func requestJoinCode() (*codeAnswer, error) {
 	return &out, nil
 }
 
-// joinStatus — впустили ли уже. Пока телефон не отсканировал код,
-// бэкенд отвечает «ждём».
-func joinStatus(code string) (*startAnswer, error) {
+// joinStatus — впустили ли уже. Пока код не отсканировали, бэкенд
+// отвечает «ждём», а потом — новой сессией.
+func joinStatus(code, secret string) (*sessionAnswer, error) {
 	body := deviceFields()
 	body["code"] = code
+	body["wait_secret"] = secret
 
-	var out startAnswer
-	if err := postJSON("/api/v1/link/status", body, &out); err != nil {
+	var out sessionAnswer
+	if err := postJSON("/api/v1/code/status", body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-// refreshSubscription — обычный запуск: спрашиваем, что у нас с ключом.
-// claim не передаём никогда: триал раздаётся телефонам, а сюда подписка
-// приезжает только входом по коду.
+// refreshSubscription — что у аккаунта с подпиской.
 func refreshSubscription() (*startAnswer, error) {
 	var out startAnswer
-	if err := postJSON("/api/v1/start", deviceFields(), &out); err != nil {
+	if err := postJSON("/api/v1/me", deviceFields(), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// claimTrial — пробный период аккаунту без подписки.
+func claimTrial() (*startAnswer, error) {
+	var out startAnswer
+	if err := postJSON("/api/v1/account/trial", deviceFields(), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func confirmNumber() error {
+	return postJSON("/api/v1/account/confirm", map[string]any{}, nil)
+}
+
+// logoutSession — закрыть сессию на сервере. Ответ не важен: локально
+// из аккаунта выходим в любом случае.
+func logoutSession() {
+	_ = postJSON("/api/v1/logout", map[string]any{}, nil)
 }
 
 // --- Продление ---------------------------------------------------------
