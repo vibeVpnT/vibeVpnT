@@ -56,7 +56,7 @@ android {
 
     defaultConfig {
         applicationId = brand("brand.applicationId")
-        minSdk = 24
+        minSdk = 23
         targetSdk = 37
         versionCode = brand("brand.versionCode").toInt()
         versionName = brand("brand.versionName")
