@@ -102,6 +102,7 @@ fun SettingsTab(
     // Продление появляется, только если оно настроено на бэкенде:
     // пункт, который открывает экран «продлить нельзя», не нужен никому.
     val primary = buildList {
+        add(MainDestination.Account)
         if (renewEnabled) add(MainDestination.Renew)
         addAll(
             listOf(

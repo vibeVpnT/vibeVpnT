@@ -618,6 +618,36 @@
     <string name="link_granted">Готово — устройство впущено.</string>
     <string name="link_bad_code">Код неверный или уже истёк</string>
 
+    <!-- Аккаунт -->
+    <string name="title_account">Аккаунт</string>
+    <string name="backend_needs_account">Войдите в аккаунт или получите пробный период</string>
+    <string name="account_welcome_title">Добро пожаловать</string>
+    <string name="account_welcome_text">Попробуйте бесплатно: мы заведём аккаунт и покажем его номер. Аккаунт уже есть? Войдите по номеру или по QR-коду.</string>
+    <string name="account_welcome_trial">Попробовать бесплатно</string>
+    <string name="account_welcome_login">У меня есть аккаунт</string>
+    <string name="account_number_title">Номер вашего аккаунта</string>
+    <string name="account_number_text">Это единственный способ войти на другом устройстве или после переустановки. Сохраните его в надёжном месте.</string>
+    <string name="account_number_saved">Я сохранил</string>
+    <string name="account_number_later">Позже</string>
+    <string name="account_number_label">Номер аккаунта</string>
+    <string name="account_number_hint">Введите его на другом устройстве, чтобы войти в тот же аккаунт.</string>
+    <string name="account_copy">Скопировать</string>
+    <string name="account_logout">Выйти из аккаунта</string>
+    <string name="account_logout_title">Выйти из аккаунта?</string>
+    <string name="account_logout_text">Серверы этого аккаунта пропадут с устройства. Войти снова можно по номеру аккаунта.</string>
+    <string name="account_login_title">Войти по номеру</string>
+    <string name="account_login_other_title">Войти в другой аккаунт</string>
+    <string name="account_login_hint">Введите номер аккаунта из 16 цифр.</string>
+    <string name="account_login_action">Войти</string>
+    <string name="account_login_invalid">В номере опечатка: проверьте цифры</string>
+    <string name="account_login_not_found">Номер не найден</string>
+    <string name="account_login_too_many">Слишком много попыток, подождите немного</string>
+    <string name="account_qr_title">Войти по QR-коду</string>
+    <string name="account_qr_hint">Покажите код на этом телефоне и отсканируйте его с устройства, где вы уже вошли.</string>
+    <string name="account_qr_action">Показать код</string>
+    <string name="account_new_title">Аккаунта ещё нет?</string>
+    <string name="account_new_hint">Заведём его и включим пробный период.</string>
+
     <string name="routing_ru_direct_title">Российские сервисы напрямую</string>
     <string name="routing_ru_direct_hint">Банки, госуслуги и доставка не пускают с адресов сервера</string>
 

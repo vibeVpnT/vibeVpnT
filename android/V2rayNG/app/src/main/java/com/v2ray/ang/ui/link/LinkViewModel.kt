@@ -22,8 +22,8 @@ import kotlinx.coroutines.launch
  * код, на устройстве с подпиской его сканируют. Сканирует тот, кто
  * делится, — так же, как в Steam и Telegram.
  *
- * Подписка после этого общая: это вход, а не второй ключ. Если ключ был
- * у обоих, общим остаётся тот, чей срок длиннее, — решает это бэкенд.
+ * Это вход в аккаунт впустившего, а не второй ключ: показавший код
+ * получает свою сессию в том же аккаунте и ту же подписку.
  */
 class LinkViewModel(application: Application) : BaseViewModel(application) {
 
@@ -63,7 +63,7 @@ class LinkViewModel(application: Application) : BaseViewModel(application) {
 
         _uiState.update { it.copy(issuing = true, issueError = false, offline = false) }
         viewModelScope.launch {
-            val link = MobileBackend.requestJoinCode(getApplication())
+            val link = MobileBackend.requestJoinCode()
 
             if (link == null) {
                 _uiState.update { it.copy(issuing = false, issueError = true) }
@@ -79,7 +79,7 @@ class LinkViewModel(application: Application) : BaseViewModel(application) {
                 )
             }
             startCountdown()
-            startWaiting(link.code)
+            startWaiting(link)
         }
     }
 
@@ -103,12 +103,12 @@ class LinkViewModel(application: Application) : BaseViewModel(application) {
      * Иначе человеку пришлось бы догадаться выйти и зайти: сам по себе
      * подписку он не получит, а уведомить его нам нечем.
      */
-    private fun startWaiting(code: String) {
+    private fun startWaiting(link: MobileBackend.LinkCode) {
         waiting?.cancel()
         waiting = viewModelScope.launch {
             while (isActive) {
                 delay(POLL_INTERVAL_MS)
-                val result = MobileBackend.pollJoinStatus(getApplication(), code)
+                val result = MobileBackend.pollJoinStatus(getApplication(), link)
                 if (result.status == MobileBackend.Status.ACTIVE) {
                     _uiState.update { it.copy(entered = true) }
                     return@launch

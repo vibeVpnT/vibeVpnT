@@ -413,10 +413,42 @@ class MainViewModel(
         askBackend(claim = false)
     }
 
-    /** Человек согласился на триал — только теперь просим выдать ключ. */
+    /** Человек согласился на триал — только теперь просим выдать ключ.
+     *  Аккаунта нет — он заводится тем же запросом. */
     fun claimTrial() {
-        _uiState.update { it.copy(trialOffer = null) }
+        _uiState.update { it.copy(trialOffer = null, accountWelcome = false) }
         askBackend(claim = true)
+    }
+
+    fun dismissAccountWelcome() {
+        _uiState.update { it.copy(accountWelcome = false) }
+    }
+
+    /** «Я сохранил номер». Не дошло до сервера — спросим в следующий раз. */
+    fun confirmAccountNumber() {
+        _uiState.update { it.copy(numberToSave = null) }
+        viewModelScope.launch(ioDispatcher) {
+            if (!MobileBackend.confirmNumber()) {
+                LogUtil.w(AppConfig.TAG, "Подтверждение номера аккаунта не дошло")
+            }
+        }
+    }
+
+    fun dismissAccountNumber() {
+        _uiState.update { it.copy(numberToSave = null) }
+    }
+
+    /**
+     * Вернулись с другого экрана. Если там вошли в аккаунт или вышли из
+     * него, подписка и серверы теперь другие — спрашиваем бэкенд заново.
+     */
+    fun refreshAccountIfChanged() {
+        if (!MobileBackend.consumeAccountChanged()) return
+        viewModelScope.launch {
+            cacheMutex.withLock { groupDataCache.clear() }
+            setupGroupTab(forceRefresh = true).join()
+        }
+        askBackend(claim = false)
     }
 
     /**
@@ -501,6 +533,14 @@ class MainViewModel(
                     renewReminder = if (reachable) renewReminder(result) else it.renewReminder,
                     trialOffer = if (result.status == MobileBackend.Status.OFFER) {
                         TrialOffer(days = result.trialDays, gb = result.trialGb)
+                    } else {
+                        null
+                    },
+                    accountWelcome = result.status == MobileBackend.Status.NEEDS_ACCOUNT,
+                    // Номер навязываем, пока его не сохранили: без него
+                    // не войти ни на другом устройстве, ни после сброса.
+                    numberToSave = if (reachable && !result.accountConfirmed) {
+                        result.accountNumber.ifBlank { null }
                     } else {
                         null
                     },

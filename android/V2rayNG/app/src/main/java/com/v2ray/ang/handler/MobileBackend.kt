@@ -29,9 +29,13 @@ import java.util.concurrent.TimeUnit
 /**
  * Разговор приложения с нашим бэкендом.
  *
- * При запуске приложение называет свой Android ID и получает обратно
- * готовый адрес подписки — человеку ничего не нужно вводить руками.
- * Тот же ответ говорит, жива подписка или срок вышел.
+ * Устройство входит в аккаунт — номер из 16 цифр, один на все платформы
+ * — и дальше шлёт только токен сессии. При запуске приложение по токену
+ * получает готовый адрес подписки: человеку ничего не нужно вводить
+ * руками. Тот же ответ говорит, жива подписка или срок вышел.
+ *
+ * Прежние версии называли себя Android ID. Обновившееся приложение один
+ * раз меняет его на сессию (session/migrate) и больше его не шлёт.
  */
 object MobileBackend {
 
@@ -46,6 +50,7 @@ object MobileBackend {
         RATE_LIMITED,    // с этого адреса уже набрали ключей
         BAD_CODE,        // код входа не подошёл
         PENDING,         // код показан, но его ещё никто не отсканировал
+        NEEDS_ACCOUNT,   // устройство не вошло в аккаунт: создать или войти
         NETWORK_ERROR;   // до бэкенда не достучались
 
         /** Подписка пригодна к работе. */
@@ -69,6 +74,10 @@ object MobileBackend {
         /** Условия триала для кнопки «получить N дней». */
         val trialDays: Int = 0,
         val trialGb: Int = 0,
+        /** Номер аккаунта, «4821 0937 5512 6604». Пусто — не вошли. */
+        val accountNumber: String = "",
+        /** Человек подтвердил, что сохранил номер. */
+        val accountConfirmed: Boolean = true,
     )
 
     /** Ответ бэкенда. Поля разбирает Gson, поэтому имена совпадают с JSON. */
@@ -84,9 +93,26 @@ object MobileBackend {
         val routing_version: Int = 0,
         val trial_days: Int = 0,
         val trial_gb: Int = 0,
+        val account_number: String? = null,
+        val confirmed: Boolean = true,
     )
 
-    private const val START_PATH = "/api/v1/start"
+    /** Ответ на вход: токен сессии и номер аккаунта. */
+    private data class SessionResponse(
+        val status: String? = null,
+        val token: String? = null,
+        val account_number: String? = null,
+        val confirmed: Boolean = true,
+        val message: String? = null,
+    )
+
+    private const val ME_PATH = "/api/v1/me"
+    private const val TRIAL_PATH = "/api/v1/account/trial"
+    private const val CREATE_PATH = "/api/v1/account/create"
+    private const val LOGIN_PATH = "/api/v1/account/login"
+    private const val CONFIRM_PATH = "/api/v1/account/confirm"
+    private const val MIGRATE_PATH = "/api/v1/session/migrate"
+    private const val LOGOUT_PATH = "/api/v1/logout"
     private const val JSON_TIMEOUT_SECONDS = 20L
 
     private val client by lazy {
@@ -184,12 +210,11 @@ object MobileBackend {
         get() = MmkvManager.decodeSettingsBool(PREF_RENEW_ENABLED, false)
 
     /**
-     * Android ID — то, чем устройство представляется бэкенду.
+     * Android ID — то, чем устройство представлялось бэкенду до аккаунтов.
      *
-     * Он переживает обновление приложения и сбрасывается только сбросом
-     * телефона к заводским настройкам, поэтому подписка не теряется при
-     * переустановке. На части прошивок возвращает пустую строку — тогда
-     * спросить подписку не у кого.
+     * Теперь он нужен только один раз: обменять его на сессию в аккаунте
+     * прежней подписки (см. ensureSession). На части прошивок возвращает
+     * пустую строку — тогда обменивать нечего.
      */
     @SuppressLint("HardwareIds")
     fun deviceId(context: Context): String =
@@ -197,24 +222,168 @@ object MobileBackend {
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         }.getOrNull().orEmpty()
 
+    // --- Аккаунт и сессия ----------------------------------------------------
+
+    /** Токен сессии. Пусто — устройство не вошло в аккаунт. */
+    private const val PREF_SESSION_TOKEN = "pref_account_session_token"
+
+    /** Номер аккаунта — для «Настроек»: показать его можно и без сети. */
+    private const val PREF_ACCOUNT_NUMBER = "pref_account_number"
+
+    /**
+     * Android ID уже обменян на сессию (или обменивать было нечего).
+     *
+     * Обмен — один раз: после выхода из аккаунта приложение не должно
+     * войти обратно само, по старому ID.
+     */
+    private const val PREF_MIGRATED = "pref_account_migrated"
+
+    private var sessionToken: String
+        get() = MmkvManager.decodeSettingsString(PREF_SESSION_TOKEN, "").orEmpty()
+        set(value) {
+            MmkvManager.encodeSettings(PREF_SESSION_TOKEN, value)
+        }
+
+    private var migrated: Boolean
+        get() = MmkvManager.decodeSettingsBool(PREF_MIGRATED, false)
+        set(value) {
+            MmkvManager.encodeSettings(PREF_MIGRATED, value)
+        }
+
+    /** Вошло ли устройство в аккаунт. */
+    val hasSession: Boolean get() = sessionToken.isNotBlank()
+
+    /** Номер аккаунта, каким его прислал бэкенд. Пусто — не вошли. */
+    val accountNumber: String
+        get() = if (hasSession) MmkvManager.decodeSettingsString(PREF_ACCOUNT_NUMBER, "").orEmpty() else ""
+
+    /**
+     * Аккаунт сменился на другом экране: вошли, вышли. Главный экран,
+     * вернувшись, спрашивает бэкенд заново — иначе показывал бы прежнюю
+     * подписку до следующего запуска.
+     */
+    @Volatile
+    private var accountChanged = false
+
+    fun consumeAccountChanged(): Boolean = accountChanged.also { accountChanged = false }
+
+    private fun openSession(answer: SessionResponse): Boolean {
+        val token = answer.token
+        if (answer.status != "ok" || token.isNullOrBlank()) return false
+        sessionToken = token
+        migrated = true
+        answer.account_number?.let { MmkvManager.encodeSettings(PREF_ACCOUNT_NUMBER, it) }
+        accountChanged = true
+        return true
+    }
+
+    /**
+     * Сессии больше нет: вышли сами или устройство отвязали в кабинете.
+     * Нашу подписку убираем вместе с ней — иначе серверы аккаунта
+     * оставались бы на устройстве, которое из него вышло.
+     */
+    private fun closeSession() {
+        sessionToken = ""
+        MmkvManager.encodeSettings(PREF_ACCOUNT_NUMBER, "")
+        val ours = ourSubscriptionUrl
+        if (ours.isNotBlank()) {
+            MmkvManager.decodeSubscriptions()
+                .filter { it.subscription.url.trimEnd('/') == ours.trimEnd('/') }
+                .forEach { MmkvManager.removeSubscription(it.guid) }
+            ourSubscriptionUrl = ""
+        }
+        accountChanged = true
+    }
+
+    /** Что устройство сообщает о себе: для списка устройств в кабинете. */
+    private fun deviceFields(): Map<String, Any?> = mapOf(
+        "platform" to "android",
+        "device_name" to listOf(Build.MANUFACTURER, Build.MODEL)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(" "),
+        "app_version" to BuildConfig.VERSION_NAME,
+        "app_package" to BuildConfig.APPLICATION_ID,
+        "device_brand" to Build.BRAND,
+        "device_model" to Build.MODEL,
+        "android_release" to Build.VERSION.RELEASE,
+        "android_sdk" to Build.VERSION.SDK_INT,
+        "locale" to Locale.getDefault().toLanguageTag(),
+        "timezone" to TimeZone.getDefault().id,
+    )
+
+    private enum class SessionState { READY, NONE, OFFLINE }
+
+    /**
+     * Есть ли сессия, а если нет — не обменять ли на неё Android ID.
+     *
+     * Обмен нужен один раз: устройство, у которого при прежней версии
+     * была подписка, садится в аккаунт этой подписки. Бэкенд устройства
+     * не знает — значит, приложение ставят впервые, и входить не во что.
+     */
+    private fun ensureSession(context: Context): SessionState {
+        if (hasSession) return SessionState.READY
+        if (migrated) return SessionState.NONE
+
+        val androidId = deviceId(context)
+        if (androidId.isBlank()) {
+            migrated = true
+            return SessionState.NONE
+        }
+
+        val answer = post(MIGRATE_PATH, deviceFields() + ("android_id" to androidId), SessionResponse::class.java)
+            ?: return SessionState.OFFLINE
+        if (openSession(answer)) {
+            LogUtil.i(AppConfig.TAG, "Android ID обменян на сессию аккаунта")
+            return SessionState.READY
+        }
+        if (answer.status == "not_found") {
+            migrated = true
+            return SessionState.NONE
+        }
+        // Бэкенд занят или аккаунты выключены — попробуем при следующем запуске.
+        LogUtil.w(AppConfig.TAG, "Обмен Android ID не удался: ${answer.status}")
+        return SessionState.OFFLINE
+    }
+
     /**
      * Спрашивает подписку и, если она есть, заводит её в приложении.
      *
      * Вызывается при каждом запуске, а не только при первом: ответ заодно
      * говорит, не истёк ли срок, и подтягивает новые серверы.
+     *
+     * @param claim человек согласился на пробный период. Аккаунта нет —
+     *              он заводится здесь же: номер приходит в ответе.
      */
     suspend fun provision(context: Context, claim: Boolean = false): Result =
         withContext(Dispatchers.IO) {
         if (!isConfigured) return@withContext Result(Status.UNAVAILABLE)
 
-        val androidId = deviceId(context)
-        if (androidId.isBlank()) {
-            LogUtil.w(AppConfig.TAG, "Android ID недоступен — подписку спросить не у кого")
-            return@withContext Result(Status.NETWORK_ERROR)
+        when (ensureSession(context)) {
+            SessionState.OFFLINE -> return@withContext Result(Status.NETWORK_ERROR)
+            SessionState.NONE -> {
+                if (!claim) return@withContext Result(Status.NEEDS_ACCOUNT)
+                val created = post(CREATE_PATH, deviceFields(), SessionResponse::class.java)
+                    ?: return@withContext Result(Status.NETWORK_ERROR)
+                if (!openSession(created)) {
+                    LogUtil.w(AppConfig.TAG, "Аккаунт не создан: ${created.status} ${created.message}")
+                    return@withContext Result(Status.NETWORK_ERROR)
+                }
+                LogUtil.i(AppConfig.TAG, "Создан аккаунт")
+            }
+            SessionState.READY -> Unit
         }
 
-        val answer = request(androidId, claim)
+        // Состояние подписки — тем же запросом, что отмечает заход
+        // устройства: сведения о нём бэкенд берёт из тела.
+        val answer = authorizedPost(if (claim) TRIAL_PATH else ME_PATH, deviceFields(), StartResponse::class.java)
             ?: return@withContext Result(Status.NETWORK_ERROR)
+
+        if (answer.status == "unauthorized") {
+            LogUtil.i(AppConfig.TAG, "Сессия закрыта на сервере — выходим из аккаунта")
+            closeSession()
+            return@withContext Result(Status.NEEDS_ACCOUNT)
+        }
 
         val status = when (answer.status) {
             "active" -> Status.ACTIVE
@@ -230,6 +399,8 @@ object MobileBackend {
         if (status != Status.NETWORK_ERROR) {
             MmkvManager.encodeSettings(PREF_SUPPORT_ENABLED, answer.support_enabled)
             MmkvManager.encodeSettings(PREF_RENEW_ENABLED, answer.renew_enabled)
+            answer.account_number?.takeIf { it.isNotBlank() }
+                ?.let { MmkvManager.encodeSettings(PREF_ACCOUNT_NUMBER, it) }
         }
 
         val url = answer.subscription_url.orEmpty()
@@ -252,33 +423,97 @@ object MobileBackend {
             routingVersion = answer.routing_version,
             trialDays = answer.trial_days,
             trialGb = answer.trial_gb,
+            accountNumber = answer.account_number.orEmpty(),
+            accountConfirmed = answer.confirmed,
         )
     }
 
-    private fun request(androidId: String, claim: Boolean): StartResponse? {
-        val payload = mapOf(
-            "android_id" to androidId,
-            // Без этого флага бэкенд только сообщает условия триала:
-            // ключ создаётся лишь после согласия человека.
-            "claim" to claim,
-            "app_version" to BuildConfig.VERSION_NAME,
-            "app_package" to BuildConfig.APPLICATION_ID,
-            "device_brand" to Build.BRAND,
-            "device_model" to Build.MODEL,
-            "android_release" to Build.VERSION.RELEASE,
-            "android_sdk" to Build.VERSION.SDK_INT,
-            "locale" to Locale.getDefault().toLanguageTag(),
-            "timezone" to TimeZone.getDefault().id,
-        )
+    /** Чем закончился вход по номеру. */
+    enum class LoginOutcome { OK, NOT_FOUND, TOO_MANY_ATTEMPTS, NETWORK_ERROR }
 
+    /**
+     * Вход по номеру аккаунта. Прежняя сессия, если была, заменяется:
+     * так входят и в другой аккаунт. Подписку нового аккаунта заводит
+     * следующий provision.
+     */
+    suspend fun login(number: String): LoginOutcome = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext LoginOutcome.NETWORK_ERROR
+
+        val answer = post(LOGIN_PATH, deviceFields() + ("number" to number), SessionResponse::class.java)
+            ?: return@withContext LoginOutcome.NETWORK_ERROR
+        when {
+            answer.status == "not_found" -> LoginOutcome.NOT_FOUND
+            answer.status == "too_many_attempts" -> LoginOutcome.TOO_MANY_ATTEMPTS
+            openSession(answer) -> LoginOutcome.OK
+            else -> LoginOutcome.NETWORK_ERROR
+        }
+    }
+
+    /** «Я сохранил номер»: больше его не навязываем. */
+    suspend fun confirmNumber(): Boolean = withContext(Dispatchers.IO) {
+        if (!hasSession) return@withContext false
+        authorizedPost(CONFIRM_PATH, emptyMap(), StatusOnly::class.java)?.status == "ok"
+    }
+
+    /**
+     * Выход из аккаунта на этом устройстве. Сессия закрывается и на
+     * сервере, а если он не ответил — хотя бы здесь: выйти человек должен
+     * и без сети.
+     */
+    suspend fun logout() = withContext(Dispatchers.IO) {
+        if (!hasSession) return@withContext
+        authorizedPost(LOGOUT_PATH, emptyMap(), StatusOnly::class.java)
+        closeSession()
+        LogUtil.i(AppConfig.TAG, "Вышли из аккаунта")
+    }
+
+    /**
+     * Номер аккаунта набран без опечатки: 16 цифр, последняя —
+     * контрольная (Luhn). Проверяем здесь, чтобы опечатка не тратила
+     * попытки входа, которые бэкенд считает.
+     */
+    fun isValidAccountNumber(raw: String): Boolean {
+        val digits = raw.filter(Char::isDigit)
+        if (digits.length != ACCOUNT_NUMBER_LENGTH || digits.length != raw.count { !it.isWhitespace() }) {
+            return false
+        }
+        val sum = digits.reversed().mapIndexed { i, ch ->
+            val d = ch - '0'
+            if (i % 2 == 1) (d * 2).let { if (it > 9) it - 9 else it } else d
+        }.sum()
+        return sum % 10 == 0
+    }
+
+    const val ACCOUNT_NUMBER_LENGTH = 16
+
+    /**
+     * Кто спрашивает — для чата, продления и push.
+     *
+     * С сессией — никто в теле: токен едет заголовком. Без неё, пока
+     * Android ID ещё не обменян (бэкенд не ответил на обмен), — по
+     * старинке Android ID: бэкенд принимает и его. null — спрашивать
+     * не от чьего имени.
+     */
+    private fun owner(context: Context): Map<String, Any?>? {
+        if (hasSession) return emptyMap()
+        if (migrated) return null
+        val androidId = deviceId(context)
+        return if (androidId.isBlank()) null else mapOf("android_id" to androidId)
+    }
+
+    private fun Request.Builder.withSession(): Request.Builder {
+        val token = sessionToken
+        if (token.isNotBlank()) header("Authorization", "Bearer $token")
+        return this
+    }
+
+    private fun <T> authorizedPost(path: String, payload: Map<String, Any?>, cls: Class<T>): T? {
         val request = Request.Builder()
-            .url(baseUrl + START_PATH)
+            .url(baseUrl + path)
+            .withSession()
             .post(JsonUtil.toJson(payload).toRequestBody("application/json".toMediaType()))
             .build()
-
-        // Разбираем тело и у неуспешного ответа: в нём лежит причина
-        // отказа, а она нужна человеку на экране.
-        return call(request, StartResponse::class.java)
+        return call(request, cls)
     }
 
     /**
@@ -405,13 +640,13 @@ object MobileBackend {
         before: Long? = null,
         limit: Int = 30,
     ): SupportPage? = withContext(Dispatchers.IO) {
-        val androidId = deviceId(context)
-        if (!isConfigured || androidId.isBlank()) return@withContext null
+        val owner = owner(context)
+        if (!isConfigured || owner == null) return@withContext null
 
         val url = StringBuilder(baseUrl)
             .append(SUPPORT_MESSAGES_PATH)
-            .append("?android_id=").append(androidId)
-            .append("&limit=").append(limit)
+            .append("?limit=").append(limit)
+        owner["android_id"]?.let { url.append("&android_id=").append(it) }
         if (after != null) url.append("&after=").append(after)
         if (before != null) url.append("&before=").append(before)
 
@@ -424,20 +659,14 @@ object MobileBackend {
     /** Отправляет сообщение в поддержку. null — не дошло. */
     suspend fun sendSupport(context: Context, text: String): SupportMessage? =
         withContext(Dispatchers.IO) {
-            val androidId = deviceId(context)
-            if (!isConfigured || androidId.isBlank()) return@withContext null
+            val owner = owner(context)
+            if (!isConfigured || owner == null) return@withContext null
 
-            val body = JsonUtil.toJson(mapOf("android_id" to androidId, "text" to text))
-            val request = Request.Builder()
-                .url(baseUrl + SUPPORT_SEND_PATH)
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
-
-            call(request, SendResponse::class.java)?.message
+            authorizedPost(SUPPORT_SEND_PATH, owner + ("text" to text), SendResponse::class.java)?.message
         }
 
     private fun <T> get(url: String, cls: Class<T>): T? =
-        call(Request.Builder().url(url).get().build(), cls)
+        call(Request.Builder().url(url).withSession().get().build(), cls)
 
     private fun <T> call(
         request: Request,
@@ -455,140 +684,95 @@ object MobileBackend {
 
     // --- Вход на другом устройстве -------------------------------------------
 
-    /** Код для входа: шесть цифр и срок, после которого он протухнет. */
+    /**
+     * Код для входа: шесть цифр, срок, после которого он протухнет, и
+     * секрет ожидания — с ним одним бэкенд отдаст сессию, когда код
+     * отсканируют. Секрет знает только это устройство.
+     */
     data class LinkCode(
         val code: String = "",
         val ttlSeconds: Int = 0,
+        val waitSecret: String = "",
     )
 
     private data class LinkCodeResponse(
         val status: String? = null,
         val code: String? = null,
+        val wait_secret: String? = null,
         val ttl_seconds: Int = 0,
         val message: String? = null,
     )
 
-    private const val LINK_REQUEST_PATH = "/api/v1/link/request"
-    private const val LINK_GRANT_PATH = "/api/v1/link/grant"
-    private const val LINK_STATUS_PATH = "/api/v1/link/status"
+    private const val CODE_REQUEST_PATH = "/api/v1/code/request"
+    private const val CODE_GRANT_PATH = "/api/v1/code/grant"
+    private const val CODE_STATUS_PATH = "/api/v1/code/status"
 
     /**
      * Просит код, чтобы войти на этом устройстве.
      *
-     * Подписки для этого иметь не нужно: код показывают тому, у кого
-     * она есть, и он её отдаёт. null — не вышло.
+     * Аккаунта для этого иметь не нужно: код показывают тому, кто уже
+     * вошёл, и он впускает. null — не вышло.
      */
-    suspend fun requestJoinCode(context: Context): LinkCode? = withContext(Dispatchers.IO) {
-        val androidId = deviceId(context)
-        if (!isConfigured || androidId.isBlank()) return@withContext null
+    suspend fun requestJoinCode(): LinkCode? = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext null
 
-        // Сведения об устройстве шлём и здесь: по этому запросу бэкенд
-        // заводит строку устройства, и дальше ему есть к чему привязать
-        // подписку.
-        val body = JsonUtil.toJson(
-            mapOf(
-                "android_id" to androidId,
-                "app_version" to BuildConfig.VERSION_NAME,
-                "device_brand" to Build.BRAND,
-                "device_model" to Build.MODEL,
-                "android_release" to Build.VERSION.RELEASE,
-                "android_sdk" to Build.VERSION.SDK_INT,
-            )
-        )
-        val request = Request.Builder()
-            .url(baseUrl + LINK_REQUEST_PATH)
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .build()
-
-        val answer = call(request, LinkCodeResponse::class.java) ?: return@withContext null
+        val answer = post(CODE_REQUEST_PATH, emptyMap(), LinkCodeResponse::class.java)
+            ?: return@withContext null
         val code = answer.code
-        if (answer.status != "ok" || code.isNullOrBlank()) {
+        val secret = answer.wait_secret
+        if (answer.status != "ok" || code.isNullOrBlank() || secret.isNullOrBlank()) {
             LogUtil.w(AppConfig.TAG, "Код входа не выдан: ${answer.status} ${answer.message}")
             return@withContext null
         }
 
-        LinkCode(code, answer.ttl_seconds)
+        LinkCode(code, answer.ttl_seconds, secret)
     }
 
     /**
-     * Делится своей подпиской с тем, чей код отсканировали.
+     * Впускает того, чей код отсканировали, в свой аккаунт.
      *
-     * Отвечает так же, как обычный запуск: если общей стала подписка
-     * другой стороны — а так бывает, когда её срок длиннее, — это
-     * устройство сразу переедет на неё.
+     * ACTIVE — впустили; UNAVAILABLE — делиться нечем (не вошли или у
+     * аккаунта нет подписки); BAD_CODE — код не подошёл.
      */
-    suspend fun grantLinkCode(context: Context, code: String): Result =
-        linkCall(context, LINK_GRANT_PATH, code, failure = Status.BAD_CODE)
+    suspend fun grantLinkCode(context: Context, code: String): Result = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext Result(Status.NETWORK_ERROR)
+        when (ensureSession(context)) {
+            SessionState.OFFLINE -> return@withContext Result(Status.NETWORK_ERROR)
+            SessionState.NONE -> return@withContext Result(Status.UNAVAILABLE)
+            SessionState.READY -> Unit
+        }
+
+        val answer = authorizedPost(CODE_GRANT_PATH, mapOf("code" to code), StatusOnly::class.java)
+            ?: return@withContext Result(Status.NETWORK_ERROR)
+        when (answer.status) {
+            "ok" -> Result(Status.ACTIVE)
+            "no_subscription" -> Result(Status.UNAVAILABLE)
+            "unauthorized" -> {
+                closeSession()
+                Result(Status.UNAVAILABLE)
+            }
+            else -> Result(Status.BAD_CODE)
+        }
+    }
 
     /**
      * Спрашивает, впустили ли уже по показанному коду.
      *
      * Пока никто не отсканировал, бэкенд отвечает «ждём» — для
-     * приложения это PENDING, и опрос продолжается.
+     * приложения это PENDING, и опрос продолжается. Впустили — приходит
+     * сессия в аккаунте впустившего, и подписка заводится тут же.
      */
-    suspend fun pollJoinStatus(context: Context, code: String): Result =
-        linkCall(context, LINK_STATUS_PATH, code, failure = Status.PENDING)
+    suspend fun pollJoinStatus(context: Context, link: LinkCode): Result = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext Result(Status.NETWORK_ERROR)
 
-    /**
-     * Общая часть обеих половин входа по коду.
-     *
-     * @param failure чем считать ответ без подписки: для сканирования
-     *                это плохой код, для ожидания — «ещё не впустили».
-     */
-    private suspend fun linkCall(
-        context: Context,
-        path: String,
-        code: String,
-        failure: Status,
-    ): Result = withContext(Dispatchers.IO) {
-        val androidId = deviceId(context)
-        if (!isConfigured || androidId.isBlank()) {
-            return@withContext Result(Status.NETWORK_ERROR)
-        }
-
-        val payload = mapOf(
-            "android_id" to androidId,
-            "code" to code,
-            "app_version" to BuildConfig.VERSION_NAME,
-            "device_brand" to Build.BRAND,
-            "device_model" to Build.MODEL,
-            "android_release" to Build.VERSION.RELEASE,
-            "android_sdk" to Build.VERSION.SDK_INT,
-        )
-        val request = Request.Builder()
-            .url(baseUrl + path)
-            .post(JsonUtil.toJson(payload).toRequestBody("application/json".toMediaType()))
-            .build()
-
-        val answer = call(request, StartResponse::class.java)
+        val payload = deviceFields() + mapOf("code" to link.code, "wait_secret" to link.waitSecret)
+        val answer = post(CODE_STATUS_PATH, payload, SessionResponse::class.java)
             ?: return@withContext Result(Status.NETWORK_ERROR)
-
-        if (answer.status != "active" && answer.subscription_url.isNullOrBlank()) {
-            // «Делиться нечем» — не то же самое, что «код не подошёл»:
-            // человеку надо объяснить разное.
-            if (answer.status == "no_subscription") {
-                return@withContext Result(Status.UNAVAILABLE)
-            }
-            return@withContext Result(failure)
+        when {
+            answer.status == "pending" -> Result(Status.PENDING)
+            openSession(answer) -> provision(context)
+            else -> Result(Status.BAD_CODE)
         }
-
-        MmkvManager.encodeSettings(PREF_SUPPORT_ENABLED, answer.support_enabled)
-
-        val url = answer.subscription_url.orEmpty()
-        val imported = if (url.isNotBlank()) {
-            syncSubscription(url, answer.subscription_name ?: Brand.name)
-        } else {
-            0
-        }
-
-        Result(
-            status = Status.ACTIVE,
-            subscriptionUrl = url,
-            daysLeft = answer.days_left,
-            startsOnFirstUse = answer.starts_on_first_use,
-            serversImported = imported,
-            supportEnabled = answer.support_enabled,
-        )
     }
 
     // --- Версия приложения ---------------------------------------------------
@@ -915,14 +1099,10 @@ object MobileBackend {
      * страшного: адрес уедет при следующем запуске.
      */
     suspend fun registerPush(context: Context, token: String): Boolean = withContext(Dispatchers.IO) {
-        val androidId = deviceId(context)
-        if (!isConfigured || androidId.isBlank()) return@withContext false
+        val owner = owner(context)
+        if (!isConfigured || owner == null) return@withContext false
 
-        val answer = post(
-            PUSH_PATH,
-            mapOf("android_id" to androidId, "token" to token),
-            StatusOnly::class.java,
-        )
+        val answer = authorizedPost(PUSH_PATH, owner + ("token" to token), StatusOnly::class.java)
         answer?.status == "ok"
     }
 
@@ -933,10 +1113,10 @@ object MobileBackend {
      * null — не достучались или бэкенд ответил отказом.
      */
     suspend fun renewState(context: Context): RenewState? = withContext(Dispatchers.IO) {
-        val androidId = deviceId(context)
-        if (!isConfigured || androidId.isBlank()) return@withContext null
+        val owner = owner(context)
+        if (!isConfigured || owner == null) return@withContext null
 
-        post(RENEW_PATH, mapOf("android_id" to androidId), RenewState::class.java)
+        authorizedPost(RENEW_PATH, owner, RenewState::class.java)
             ?.takeIf { it.status == "ok" }
     }
 
@@ -954,12 +1134,13 @@ object MobileBackend {
         bytes: ByteArray,
         fileName: String,
     ): Pair<RenewRequest?, String?> = withContext(Dispatchers.IO) {
-        val androidId = deviceId(context)
-        if (!isConfigured || androidId.isBlank()) return@withContext null to null
+        val owner = owner(context)
+        if (!isConfigured || owner == null) return@withContext null to null
 
         val request = Request.Builder()
             .url(baseUrl + RENEW_RECEIPT_PATH)
-            .post(receiptBody(androidId, tier, bytes, fileName))
+            .withSession()
+            .post(receiptBody(owner["android_id"] as String?, tier, bytes, fileName))
             .build()
 
         val answer = call(request, ReceiptResponse::class.java, uploadClient)
@@ -977,15 +1158,17 @@ object MobileBackend {
      * телефон кончается раньше, чем отправка начинается.
      */
     private fun receiptBody(
-        androidId: String,
+        androidId: String?,
         tier: Int,
         bytes: ByteArray,
         fileName: String,
     ): RequestBody {
         // Имя файла — единственное, что пришло снаружи: экранируем его
-        // тем же, чем собираем остальные запросы.
+        // тем же, чем собираем остальные запросы. Android ID — только у
+        // устройства без сессии: с ней владельца называет токен.
+        val owner = if (androidId != null) "\"android_id\":\"" + androidId + "\"," else ""
         val head = (
-            "{\"android_id\":\"" + androidId + "\",\"tier\":" + tier +
+            "{" + owner + "\"tier\":" + tier +
                 ",\"name\":" + JsonUtil.toJson(fileName) + ",\"image\":\""
             ).toByteArray()
         val tail = "\"}".toByteArray()

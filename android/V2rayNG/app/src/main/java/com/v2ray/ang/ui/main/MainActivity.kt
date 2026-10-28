@@ -45,6 +45,7 @@ import com.v2ray.ang.ui.server.ServerVmessActivity
 import com.v2ray.ang.ui.server.ServerWireguardActivity
 import com.v2ray.ang.ui.settings.SettingsActivity
 import com.v2ray.ang.ui.subscription.SubSettingActivity
+import com.v2ray.ang.ui.account.AccountActivity
 import com.v2ray.ang.ui.link.LinkActivity
 import com.v2ray.ang.ui.renew.RenewActivity
 import com.v2ray.ang.ui.support.SupportActivity
@@ -89,6 +90,8 @@ class MainActivity : HelperBaseComponentActivity() {
             val restartService = SettingsChangeManager.consumeRestartService()
             val refreshGroups = SettingsChangeManager.consumeSetupGroupTab()
             mainViewModel.refreshUiSettings()
+            // Вход по номеру или по коду и выход меняют подписку.
+            mainViewModel.refreshAccountIfChanged()
             if (refreshGroups) mainViewModel.onAction(MainAction.RefreshGroups)
             if (restartService) LauncherManager.restartService(this)
         }
@@ -141,6 +144,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun navigateTo(destination: MainDestination) {
         val intent = when (destination) {
+            MainDestination.Account -> Intent(this, AccountActivity::class.java)
             MainDestination.Renew -> Intent(this, RenewActivity::class.java)
             MainDestination.Subscriptions -> Intent(this, SubSettingActivity::class.java)
             MainDestination.PerAppProxy -> Intent(this, PerAppProxyActivity::class.java)

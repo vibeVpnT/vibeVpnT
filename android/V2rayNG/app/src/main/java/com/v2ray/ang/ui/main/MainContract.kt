@@ -60,6 +60,14 @@ data class MainUiState(
      *  null — предлагать нечего либо человек уже ответил. */
     val trialOffer: TrialOffer? = null,
 
+    /** Устройство не вошло в аккаунт: предлагаем попробовать бесплатно
+     *  или войти. false — предлагать нечего либо человек уже ответил. */
+    val accountWelcome: Boolean = false,
+
+    /** Номер аккаунта, который человек ещё не сохранил: показываем его
+     *  и ждём «Я сохранил». null — показывать нечего. */
+    val numberToSave: String? = null,
+
     /** По чему выстроен список серверов. */
     val sortBy: ServerSort = ServerSort.Ping,
 

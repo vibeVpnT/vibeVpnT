@@ -629,6 +629,36 @@
     <string name="link_granted">Done — the device is in.</string>
     <string name="link_bad_code">Wrong code, or it has expired</string>
 
+    <!-- Аккаунт -->
+    <string name="title_account">Account</string>
+    <string name="backend_needs_account">Sign in to your account or start a free trial</string>
+    <string name="account_welcome_title">Welcome</string>
+    <string name="account_welcome_text">Try it for free: we will create an account and show you its number. Already have an account? Sign in with its number or a QR code.</string>
+    <string name="account_welcome_trial">Try for free</string>
+    <string name="account_welcome_login">I already have an account</string>
+    <string name="account_number_title">Your account number</string>
+    <string name="account_number_text">This number is the only way to sign in on another device or after reinstalling. Save it somewhere safe.</string>
+    <string name="account_number_saved">I saved it</string>
+    <string name="account_number_later">Later</string>
+    <string name="account_number_label">Account number</string>
+    <string name="account_number_hint">Enter it on another device to sign in to the same account.</string>
+    <string name="account_copy">Copy</string>
+    <string name="account_logout">Sign out</string>
+    <string name="account_logout_title">Sign out of the account?</string>
+    <string name="account_logout_text">Servers of this account will be removed from the device. You can sign in again with the account number.</string>
+    <string name="account_login_title">Sign in with a number</string>
+    <string name="account_login_other_title">Sign in to another account</string>
+    <string name="account_login_hint">Enter the 16-digit account number.</string>
+    <string name="account_login_action">Sign in</string>
+    <string name="account_login_invalid">The number has a typo: check the digits</string>
+    <string name="account_login_not_found">Account not found</string>
+    <string name="account_login_too_many">Too many attempts, please wait a little</string>
+    <string name="account_qr_title">Sign in with a QR code</string>
+    <string name="account_qr_hint">Show a code on this phone and scan it from a device that is already signed in.</string>
+    <string name="account_qr_action">Show code</string>
+    <string name="account_new_title">No account yet?</string>
+    <string name="account_new_hint">We will create one and turn on a free trial.</string>
+
     <!-- Маршрутизация -->
     <string name="routing_ru_direct_title">Local services without VPN</string>
     <string name="routing_ru_direct_hint">Banks and government sites refuse server addresses</string>

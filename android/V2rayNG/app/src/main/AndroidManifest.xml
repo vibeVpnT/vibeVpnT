@@ -206,6 +206,10 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".ui.account.AccountActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name=".ui.link.LinkActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

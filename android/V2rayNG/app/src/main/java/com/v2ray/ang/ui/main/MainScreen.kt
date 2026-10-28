@@ -83,6 +83,25 @@ fun MainScreen(
         )
     }
 
+    if (uiState.accountWelcome) {
+        AccountWelcomeDialog(
+            onTrial = { mainViewModel.claimTrial() },
+            onHaveAccount = {
+                mainViewModel.dismissAccountWelcome()
+                onNavigate(MainDestination.Account)
+            },
+            onDismiss = { mainViewModel.dismissAccountWelcome() },
+        )
+    }
+
+    uiState.numberToSave?.let { number ->
+        AccountNumberDialog(
+            number = number,
+            onSaved = { mainViewModel.confirmAccountNumber() },
+            onLater = { mainViewModel.dismissAccountNumber() },
+        )
+    }
+
     // Срок на исходе. Показываем при каждом запуске, пока осталось мало:
     // приложение открывают не каждый день, и единственное уведомление
     // человек попросту пропустит.

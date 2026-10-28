@@ -11,6 +11,7 @@ import com.v2ray.ang.R
  * нижние вкладки, но сам перечень разделов остался прежним.
  */
 enum class MainDestination(@DrawableRes val iconRes: Int, @StringRes val labelRes: Int) {
+    Account(R.drawable.ic_account_24dp, R.string.title_account),
     Renew(R.drawable.ic_renew_24dp, R.string.title_renew),
     Subscriptions(R.drawable.ic_subscriptions_24dp, R.string.title_sub_setting),
     PerAppProxy(R.drawable.ic_per_apps_24dp, R.string.per_app_proxy_settings),

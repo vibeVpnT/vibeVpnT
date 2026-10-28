@@ -156,6 +156,7 @@ private fun SubscriptionNotice(status: MobileBackend.Status?, checking: Boolean)
         status == MobileBackend.Status.DISABLED -> R.string.backend_disabled
         status == MobileBackend.Status.RATE_LIMITED -> R.string.backend_rate_limited
         status == MobileBackend.Status.UNAVAILABLE -> R.string.backend_unavailable
+        status == MobileBackend.Status.NEEDS_ACCOUNT -> R.string.backend_needs_account
         else -> R.string.backend_network_error
     } ?: return
 
