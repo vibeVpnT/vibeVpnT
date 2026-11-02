@@ -36,6 +36,7 @@ signing.properties
 
 # Ignore Google services JSON
 V2rayNG/app/google-services.json
+brands/*/google-services.json
 
 # Additional common Android/Java ignores
 *.log
