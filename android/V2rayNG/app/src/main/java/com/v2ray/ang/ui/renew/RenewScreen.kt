@@ -159,7 +159,7 @@ private fun Content(
             Spacer(Modifier.height(10.dp))
             PayCard(
                 tier = state.chosen,
-                payUrl = renew.pay_url,
+                payUrl = state.chosen.pay_url.ifBlank { renew.pay_url },
                 requisites = renew.requisites,
                 sending = state.sending,
                 onPay = onPay,

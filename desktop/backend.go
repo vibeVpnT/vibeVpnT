@@ -226,6 +226,9 @@ type renewTier struct {
 	Days   int    `json:"days"`
 	GB     int    `json:"gb"`
 	Emoji  string `json:"emoji"`
+	// Ссылка на оплату с суммой этого тарифа. Пусто — старый бэкенд,
+	// тогда общая renewInfo.PayURL.
+	PayURL string `json:"pay_url"`
 }
 
 // Подписка глазами панели. Срок и трафик держим раздельно: кончиться

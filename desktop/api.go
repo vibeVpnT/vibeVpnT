@@ -601,12 +601,13 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 // --- Подписка ----------------------------------------------------------
 
-// Ссылка на оплату, какой её прислал бэкенд. Храним, чтобы открывать
-// браузером только её: иначе страница в окне превращается в способ
-// открыть на машине что угодно.
+// Ссылки на оплату, какими их прислал бэкенд: общая и у каждого тарифа
+// своя, с суммой. Храним, чтобы открывать браузером только их: иначе
+// страница в окне превращается в способ открыть на машине что угодно.
 var payURL struct {
 	sync.Mutex
-	url string
+	url   string
+	tiers map[int]string
 }
 
 func handleRenew(w http.ResponseWriter, r *http.Request) {
@@ -617,8 +618,15 @@ func handleRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tiers := make(map[int]string, len(answer.Tiers))
+	for _, tier := range answer.Tiers {
+		if tier.PayURL != "" {
+			tiers[tier.Index] = tier.PayURL
+		}
+	}
 	payURL.Lock()
 	payURL.url = answer.PayURL
+	payURL.tiers = tiers
 	payURL.Unlock()
 
 	// Экран открыт — значит, про решение мы узнаём прямо сейчас, и
@@ -673,8 +681,19 @@ func handleReceipt(w http.ResponseWriter, r *http.Request) {
 // ссылка наружу не открывается: это отдельное окно без адресной строки,
 // и платить человеку удобнее в своём обычном браузере.
 func handlePay(w http.ResponseWriter, r *http.Request) {
+	// Номер выбранного тарифа: у его ссылки сумма уже подставлена.
+	var in struct {
+		Tier *int `json:"tier"`
+	}
+	if r.Method == http.MethodPost {
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&in)
+	}
+
 	payURL.Lock()
 	url := payURL.url
+	if in.Tier != nil && payURL.tiers[*in.Tier] != "" {
+		url = payURL.tiers[*in.Tier]
+	}
 	payURL.Unlock()
 
 	if url == "" {

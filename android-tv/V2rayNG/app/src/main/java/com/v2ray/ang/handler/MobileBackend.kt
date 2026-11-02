@@ -838,6 +838,9 @@ object MobileBackend {
         val days: Int = 0,
         val gb: Int = 0,
         val emoji: String = "",
+        /** Ссылка на оплату с суммой этого тарифа. Пусто — старый бэкенд,
+         *  тогда общая ссылка из RenewInfo.pay_url. */
+        val pay_url: String = "",
     )
 
     /** Подписка глазами панели: срок и трафик. */

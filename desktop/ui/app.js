@@ -616,7 +616,8 @@ function backToTiers() {
 }
 
 async function openPay() {
-  const answer = await call("/api/renew/pay");
+  // Тариф — чтобы открылась ссылка с его суммой; своя сумма — общая ссылка.
+  const answer = await call("/api/renew/pay", { tier: chosen ? chosen.tier : null });
   if (answer && answer.error) showNotice(answer.error);
 }
 
