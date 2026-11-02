@@ -210,6 +210,10 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
         <activity
+            android:name=".ui.account.WelcomeActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name=".ui.link.LinkActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

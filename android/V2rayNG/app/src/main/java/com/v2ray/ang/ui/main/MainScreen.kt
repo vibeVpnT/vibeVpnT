@@ -83,15 +83,14 @@ fun MainScreen(
         )
     }
 
+    // Без аккаунта сразу ведём на отдельный экран входа и регистрации.
+    // Флаг гасим до перехода: вернувшись оттуда ни с чем, человек
+    // останется на главном, а не попадёт на тот же экран снова.
     if (uiState.accountWelcome) {
-        AccountWelcomeDialog(
-            onTrial = { mainViewModel.claimTrial() },
-            onHaveAccount = {
-                mainViewModel.dismissAccountWelcome()
-                onNavigate(MainDestination.Account)
-            },
-            onDismiss = { mainViewModel.dismissAccountWelcome() },
-        )
+        LaunchedEffect(Unit) {
+            mainViewModel.dismissAccountWelcome()
+            onNavigate(MainDestination.Welcome)
+        }
     }
 
     uiState.numberToSave?.let { number ->

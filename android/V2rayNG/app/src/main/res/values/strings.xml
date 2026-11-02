@@ -633,9 +633,10 @@
     <string name="title_account">Account</string>
     <string name="backend_needs_account">Sign in to your account or start a free trial</string>
     <string name="account_welcome_title">Welcome</string>
-    <string name="account_welcome_text">Try it for free: we will create an account and show you its number. Already have an account? Sign in with its number or a QR code.</string>
+    <string name="account_start_title">Welcome to %1$s</string>
+    <string name="account_start_text">To connect, create an account: it is free and needs no email. Already have one? Sign in below.</string>
+    <string name="account_start_later">Later</string>
     <string name="account_welcome_trial">Try for free</string>
-    <string name="account_welcome_login">I already have an account</string>
     <string name="account_number_title">Your account number</string>
     <string name="account_number_text">This number is the only way to sign in on another device or after reinstalling. Save it somewhere safe.</string>
     <string name="account_number_saved">I saved it</string>

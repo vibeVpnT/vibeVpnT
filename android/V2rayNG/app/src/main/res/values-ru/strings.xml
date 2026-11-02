@@ -622,9 +622,10 @@
     <string name="title_account">Аккаунт</string>
     <string name="backend_needs_account">Войдите в аккаунт или получите пробный период</string>
     <string name="account_welcome_title">Добро пожаловать</string>
-    <string name="account_welcome_text">Попробуйте бесплатно: мы заведём аккаунт и покажем его номер. Аккаунт уже есть? Войдите по номеру или по QR-коду.</string>
+    <string name="account_start_title">Добро пожаловать в %1$s</string>
+    <string name="account_start_text">Чтобы подключиться, заведите аккаунт: это бесплатно и без почты. Аккаунт уже есть? Войдите ниже.</string>
+    <string name="account_start_later">Позже</string>
     <string name="account_welcome_trial">Попробовать бесплатно</string>
-    <string name="account_welcome_login">У меня есть аккаунт</string>
     <string name="account_number_title">Номер вашего аккаунта</string>
     <string name="account_number_text">Это единственный способ войти на другом устройстве или после переустановки. Сохраните его в надёжном месте.</string>
     <string name="account_number_saved">Я сохранил</string>

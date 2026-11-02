@@ -46,6 +46,7 @@ import com.v2ray.ang.ui.server.ServerWireguardActivity
 import com.v2ray.ang.ui.settings.SettingsActivity
 import com.v2ray.ang.ui.subscription.SubSettingActivity
 import com.v2ray.ang.ui.account.AccountActivity
+import com.v2ray.ang.ui.account.WelcomeActivity
 import com.v2ray.ang.ui.link.LinkActivity
 import com.v2ray.ang.ui.renew.RenewActivity
 import com.v2ray.ang.ui.support.SupportActivity
@@ -145,6 +146,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun navigateTo(destination: MainDestination) {
         val intent = when (destination) {
             MainDestination.Account -> Intent(this, AccountActivity::class.java)
+            MainDestination.Welcome -> Intent(this, WelcomeActivity::class.java)
             MainDestination.Renew -> Intent(this, RenewActivity::class.java)
             MainDestination.Subscriptions -> Intent(this, SubSettingActivity::class.java)
             MainDestination.PerAppProxy -> Intent(this, PerAppProxyActivity::class.java)

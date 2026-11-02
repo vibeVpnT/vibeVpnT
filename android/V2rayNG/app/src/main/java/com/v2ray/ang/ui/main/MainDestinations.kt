@@ -12,6 +12,8 @@ import com.v2ray.ang.R
  */
 enum class MainDestination(@DrawableRes val iconRes: Int, @StringRes val labelRes: Int) {
     Account(R.drawable.ic_account_24dp, R.string.title_account),
+    /** Вход и регистрация при запуске без аккаунта; в меню настроек его нет. */
+    Welcome(R.drawable.ic_account_24dp, R.string.account_welcome_title),
     Renew(R.drawable.ic_renew_24dp, R.string.title_renew),
     Subscriptions(R.drawable.ic_subscriptions_24dp, R.string.title_sub_setting),
     PerAppProxy(R.drawable.ic_per_apps_24dp, R.string.per_app_proxy_settings),

@@ -21,39 +21,6 @@ import com.v2ray.ang.ui.compose.Brand
 import com.v2ray.ang.util.Utils
 
 /**
- * Первый запуск без аккаунта: попробовать бесплатно или войти.
- *
- * «У меня есть аккаунт» — отдельной кнопкой внутри окна, а не кнопкой
- * отказа: отказ срабатывает и от «Назад», и уводить человека на другой
- * экран от случайного нажатия незачем.
- */
-@Composable
-fun AccountWelcomeDialog(
-    onTrial: () -> Unit,
-    onHaveAccount: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AppDialog(
-        onDismiss = onDismiss,
-        title = stringResource(R.string.account_welcome_title),
-        confirmText = stringResource(R.string.account_welcome_trial),
-        onConfirm = onTrial,
-        dismissText = stringResource(R.string.trial_offer_decline),
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            Text(
-                text = stringResource(R.string.account_welcome_text),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onHaveAccount) {
-                Text(stringResource(R.string.account_welcome_login), color = Brand.accent)
-            }
-        }
-    }
-}
-
-/**
  * Номер аккаунта, который ещё не сохранили.
  *
  * Номер — единственный способ войти, поэтому закрыть окно насовсем

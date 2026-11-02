@@ -164,7 +164,7 @@ private fun NumberCard(number: String, busy: Boolean, onLogout: () -> Unit) {
 }
 
 @Composable
-private fun LoginCard(
+internal fun LoginCard(
     loggedIn: Boolean,
     state: AccountViewModel.UiState,
     draft: String,
@@ -244,23 +244,23 @@ private val GroupsOfFour = VisualTransformation { text ->
 }
 
 @Composable
-private fun Title(text: String) {
+internal fun Title(text: String) {
     Text(text = text, color = Brand.onDark, fontSize = 16.sp, fontWeight = FontWeight.Medium)
     Spacer(Modifier.height(6.dp))
 }
 
 @Composable
-private fun Hint(text: String) {
+internal fun Hint(text: String) {
     Text(text = text, color = Brand.onDarkMuted, fontSize = 13.sp)
 }
 
 @Composable
-private fun Notice(text: String) {
+internal fun Notice(text: String) {
     Text(text = text, color = Brand.onDarkMuted, fontSize = 12.sp)
 }
 
 @Composable
-private fun Card(content: @Composable ColumnScope.() -> Unit) {
+internal fun Card(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -272,7 +272,7 @@ private fun Card(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun PrimaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun PrimaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
