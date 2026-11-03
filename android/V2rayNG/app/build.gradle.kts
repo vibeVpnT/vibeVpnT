@@ -39,6 +39,16 @@ fun brand(key: String): String = brandProps.getProperty(key)
 val brandSlug: String = (brandProps.getProperty("brand.slug") ?: brand("brand.name"))
     .lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
+// Магазин, для которого сборка: -Pstore=appgallery или переменная STORE.
+// Пусто — apk для раздачи с сайта. В сборке для магазина нет обновления
+// из самого приложения (обновляет магазин), а продление ведёт на сайт.
+val storeId: String = ((project.findProperty("store") as String?)
+    ?: System.getenv("STORE")
+    ?: "").trim().lowercase()
+if (storeId.isNotEmpty() && storeId != "appgallery") {
+    throw GradleException("неизвестный магазин '$storeId': есть только appgallery")
+}
+
 // Плагин Firebase подключаем только тогда, когда у бренда есть его
 // настройки. Иначе сборка второго приложения падала бы на отсутствующем
 // google-services.json — а push ему могут быть и не нужны.
@@ -81,6 +91,7 @@ android {
         manifestPlaceholders["brandUrlScheme"] = brand("brand.urlScheme")
         brandString("BRAND_SUPPORT_URL", "brand.support.url")
         brandString("BRAND_SITE_URL", "brand.site.url")
+        buildConfigField("String", "STORE", "\"$storeId\"")
         buildConfigField("long", "BRAND_ACCENT", "0x${brand("brand.color.accent")}L")
         buildConfigField("long", "BRAND_BACKGROUND", "0x${brand("brand.color.background")}L")
         buildConfigField("long", "BRAND_SURFACE", "0x${brand("brand.color.surface")}L")
@@ -125,6 +136,13 @@ android {
         getByName("main") {
             jniLibs.srcDirs("libs")
         }
+        // Сборка для магазина: манифест release убирает разрешение
+        // ставить apk — обновляет магазин, а не приложение.
+        if (storeId.isNotEmpty()) {
+            getByName("release") {
+                manifest.srcFile("src/store/AndroidManifest.xml")
+            }
+        }
     }
 
     compileOptions {
@@ -151,7 +169,8 @@ android {
             .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
             .forEach { output ->
                 val abi = output.getFilter("ABI") ?: "universal"
-                output.outputFileName = "${brandSlug}-${variant.versionName}-${abi}.apk"
+                val store = if (storeId.isEmpty()) "" else "-$storeId"
+                output.outputFileName = "${brandSlug}${store}-${variant.versionName}-${abi}.apk"
                 abiCodes[abi]?.let { code ->
                     output.versionCodeOverride = variant.versionCode * 10 + code
                 }

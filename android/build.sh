@@ -5,6 +5,8 @@
 #   ./build.sh                      — arm64, им пользуется 95% телефонов
 #   ABI=universal ./build.sh        — один APK под все архитектуры
 #   BRAND=proxyvv ./build.sh        — другое приложение из этого же кода
+#   STORE=appgallery BRAND=proxyvv ./build.sh — сборка для AppGallery: без
+#                                     обновления из приложения, продление на сайте
 #
 # Ключ подписи живёт вне репозитория: /opt/build/keystore. Потерять его
 # нельзя — без него не выпустить обновление поверх установленного.
@@ -16,7 +18,8 @@ export NDK_HOME=${NDK_HOME:-$ANDROID_HOME/ndk/30.0.16248370}
 KS=${KEYSTORE_DIR:-/opt/build/keystore}
 ABI=${ABI:-arm64-v8a}
 BRAND=${BRAND:-aviavp}
-export BRAND
+STORE=${STORE:-}
+export BRAND STORE
 
 [ -f "$KS/aviavp.jks" ] || { echo "нет ключа подписи в $KS"; exit 1; }
 PW=$(cat "$KS/password")
@@ -44,12 +47,12 @@ cd V2rayNG
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 chmod +x gradlew
 
-./gradlew --no-daemon -PABI_FILTERS="$ABI" -Pbrand="$BRAND" assembleRelease \
+./gradlew --no-daemon -PABI_FILTERS="$ABI" -Pbrand="$BRAND" -Pstore="$STORE" assembleRelease \
     -Pandroid.injected.signing.store.file="$KS/aviavp.jks" \
     -Pandroid.injected.signing.store.password="$PW" \
     -Pandroid.injected.signing.key.alias=aviavp \
     -Pandroid.injected.signing.key.password="$PW"
 
 echo
-echo "Готово ($BRAND):"
+echo "Готово ($BRAND${STORE:+, $STORE}):"
 ls -la app/build/outputs/apk/release/*.apk

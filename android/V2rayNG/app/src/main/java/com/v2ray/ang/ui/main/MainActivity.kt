@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.dto.entities.ProfileItem
@@ -147,7 +148,15 @@ class MainActivity : HelperBaseComponentActivity() {
         val intent = when (destination) {
             MainDestination.Account -> Intent(this, AccountActivity::class.java)
             MainDestination.Welcome -> Intent(this, WelcomeActivity::class.java)
-            MainDestination.Renew -> Intent(this, RenewActivity::class.java)
+            MainDestination.Renew -> {
+                // В сборке для магазина оплаты внутри приложения нет:
+                // подписка продлевается в личном кабинете на сайте.
+                if (BuildConfig.STORE.isNotEmpty()) {
+                    Utils.openUri(this, "${BuildConfig.BRAND_SITE_URL.trimEnd('/')}/account")
+                    return
+                }
+                Intent(this, RenewActivity::class.java)
+            }
             MainDestination.Subscriptions -> Intent(this, SubSettingActivity::class.java)
             MainDestination.PerAppProxy -> Intent(this, PerAppProxyActivity::class.java)
             MainDestination.Routing -> Intent(this, RoutingSettingActivity::class.java)

@@ -58,6 +58,9 @@ object AppUpdater {
 
     /** Есть ли сборка новее установленной. null — нет или не узнали. */
     suspend fun check(context: Context): Update? {
+        // Сборку из магазина обновляет магазин: ставить apk мимо него
+        // правила магазинов запрещают, да и разрешения на это у неё нет.
+        if (BuildConfig.STORE.isNotEmpty()) return null
         val release = MobileBackend.latestRelease() ?: return null
         val installed = installedVersionCode(context)
         if (release.version_code <= installed || release.apk_url.isNullOrBlank()) return null
