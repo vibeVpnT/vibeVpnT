@@ -310,9 +310,53 @@ type routingAnswer struct {
 		DomainStrategy string   `json:"domain_strategy"`
 		DirectDNS      []string `json:"direct_dns"`
 	} `json:"settings"`
-	AdsBlock []json.RawMessage `json:"ads_block"`
+	Groups []routingGroup `json:"groups"`
+	// Старый формат: бэкенды до 2026-11 присылали только эти два списка.
 	RuDirect []json.RawMessage `json:"ru_direct"`
 	Common   []json.RawMessage `json:"common"`
+}
+
+// routingGroup — группа правил; группы применяются в том порядке, в
+// каком пришли. Toggle — переключатель в программе, от которого зависит
+// группа. Незнакомый (кнопки под него в этой версии ещё нет) не мешает:
+// группа включена, если бэкенд не прислал default: false. Так новая
+// группа доходит до программы без новой сборки.
+type routingGroup struct {
+	ID      string            `json:"id"`
+	Toggle  string            `json:"toggle"`
+	Default *bool             `json:"default"`
+	Rules   []json.RawMessage `json:"rules"`
+}
+
+// Переключатели групп, которые знает программа.
+const toggleRuDirect = "ru_direct"
+
+// activeGroups — включённые группы по порядку.
+func (r *routingAnswer) activeGroups() []routingGroup {
+	if r == nil {
+		return nil
+	}
+	groups := r.Groups
+	if groups == nil {
+		groups = []routingGroup{
+			{ID: "ru_direct", Toggle: toggleRuDirect, Rules: r.RuDirect},
+			{ID: "common", Rules: r.Common},
+		}
+	}
+	out := []routingGroup{}
+	for _, g := range groups {
+		switch {
+		case g.Toggle == "":
+		case g.Toggle == toggleRuDirect:
+			if !ruDirect() {
+				continue
+			}
+		case g.Default != nil && !*g.Default:
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 // fetchRouting — правила маршрутизации с бэкенда. Файл там один на все

@@ -648,10 +648,29 @@ object MobileBackend {
     private data class RoutingResponse(
         val version: Int = 0,
         val settings: RoutingSettings? = null,
-        val ads_block: List<RulesetItem>? = null,
+        val groups: List<RoutingGroup>? = null,
+        // Старый формат: бэкенды до 2026-11 присылали только эти два списка.
         val ru_direct: List<RulesetItem>? = null,
         val common: List<RulesetItem>? = null,
     )
+
+    /**
+     * Группа правил. Группы применяются в том порядке, в каком пришли.
+     *
+     * toggle — переключатель в приложении, от которого зависит группа.
+     * Незнакомый (под него в этой версии ещё нет кнопки) не мешает:
+     * группа тогда включена, если сервер не прислал default = false. Так
+     * новая группа с сервера доходит до приложения без новой сборки.
+     */
+    private data class RoutingGroup(
+        val id: String? = null,
+        val toggle: String? = null,
+        val default: Boolean? = null,
+        val rules: List<RulesetItem>? = null,
+    )
+
+    /** Переключатели групп, которые знает приложение. */
+    private const val TOGGLE_RU_DIRECT = "ru_direct"
 
     /**
      * Настройки ядра, без которых правила работают наполовину.
@@ -718,13 +737,14 @@ object MobileBackend {
             return@withContext false
         }
 
-        // Блокировка рекламы — первой: иначе рекламу с российских доменов
-        // (Яндекс, VK) раньше перехватило бы «напрямую».
-        val rules = buildList {
-            addAll(answer.ads_block.orEmpty())
-            if (ruDirectEnabled) addAll(answer.ru_direct.orEmpty())
-            addAll(answer.common.orEmpty())
-        }.mapNotNull(::sanitizeRule)
+        val groups = answer.groups ?: listOf(
+            RoutingGroup(id = "ru_direct", toggle = TOGGLE_RU_DIRECT, rules = answer.ru_direct),
+            RoutingGroup(id = "common", rules = answer.common),
+        )
+        val rules = groups
+            .filter(::isGroupEnabled)
+            .flatMap { it.rules.orEmpty() }
+            .mapNotNull(::sanitizeRule)
         if (rules.isEmpty()) return@withContext false
 
         val applied = SettingsManager.resetRoutingRulesets(JsonUtil.toJson(rules))
@@ -765,21 +785,20 @@ object MobileBackend {
             ?.let { MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, it.joinToString(",")) }
     }
 
+    /** Включена ли группа: по переключателю, если приложение его знает. */
+    private fun isGroupEnabled(group: RoutingGroup): Boolean = when (group.toggle) {
+        null, "" -> true
+        TOGGLE_RU_DIRECT -> ruDirectEnabled
+        else -> group.default ?: true
+    }
+
     /**
-     * Справочники, на которые можно ссылаться в правилах.
-     *
-     * Ссылка на отсутствующую категорию роняет ядро целиком: VPN
-     * перестаёт подниматься, и не работает вообще ничего — ни то, что
-     * должно идти напрямую, ни то, что через сервер. Поэтому пропускаем
-     * только те, что заведомо есть в geosite.dat и geoip.dat, идущих с
-     * приложением (внутри libv2ray.aar); список сверен с их содержимым.
-     *
-     * Про category-ru стоит знать отдельно: вопреки названию, это не «все
-     * российские сайты», а разрозненный набор примерно на тысячу адресов,
-     * где нет ни госуслуг, ни банков, ни магазинов. Крупные сервисы лежат
-     * по отраслевым категориям ниже, а весь домен .ru целиком — в tld-ru.
+     * Справочники на случай, если geosite.dat или geoip.dat прочитать не
+     * удалось: эти категории есть в файлах из libv2ray.aar любой нашей
+     * сборки. Обычно же категории сверяются с самими файлами
+     * (GeoCategories) — ссылка на отсутствующую роняет ядро целиком.
      */
-    private val ALLOWED_GEO = setOf(
+    private val FALLBACK_GEO = setOf(
         "geosite:private",
         "geosite:category-ads-all",
         "geosite:tld-ru",
@@ -799,6 +818,9 @@ object MobileBackend {
         "geoip:ru",
     )
 
+    private fun isKnownGeo(value: String): Boolean =
+        GeoCategories.contains(value) ?: (value in FALLBACK_GEO)
+
     /**
      * Выбрасывает из правила ссылки на незнакомые справочники.
      * Правило, от которого ничего не осталось, отбрасывается целиком.
@@ -808,7 +830,7 @@ object MobileBackend {
             if (values == null) return null
             val safe = values.filter { value ->
                 val isGeo = value.startsWith("geosite:") || value.startsWith("geoip:")
-                if (isGeo && value !in ALLOWED_GEO) {
+                if (isGeo && !isKnownGeo(value)) {
                     LogUtil.w(AppConfig.TAG, "Правило ссылается на неизвестный справочник: $value")
                     false
                 } else {

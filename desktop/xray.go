@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -241,25 +242,13 @@ func buildConfig(s server, routing *routingAnswer) ([]byte, error) {
 		if len(routing.Settings.DirectDNS) > 0 {
 			directDNS = routing.Settings.DirectDNS
 		}
-		// Порядок решает: выигрывает первое совпавшее правило. Первой —
-		// блокировка рекламы, иначе рекламу с российских доменов (Яндекс,
-		// VK) перехватило бы «напрямую»; затем «напрямую» — раньше
-		// всего остального.
-		for _, raw := range routing.AdsBlock {
-			if rule := decodeRule(raw); rule != nil {
-				rules = append(rules, rule)
-			}
-		}
-		if ruDirect() {
-			for _, raw := range routing.RuDirect {
+		// Порядок решает: выигрывает первое совпавшее правило, поэтому
+		// группы идут ровно так, как их расставил бэкенд.
+		for _, group := range routing.activeGroups() {
+			for _, raw := range group.Rules {
 				if rule := decodeRule(raw); rule != nil {
 					rules = append(rules, rule)
 				}
-			}
-		}
-		for _, raw := range routing.Common {
-			if rule := decodeRule(raw); rule != nil {
-				rules = append(rules, rule)
 			}
 		}
 	}
@@ -327,7 +316,10 @@ func buildConfig(s server, routing *routingAnswer) ([]byte, error) {
 }
 
 // decodeRule — правило с бэкенда в том виде, в каком его понимает ядро.
-// Формат совпадает, переводить нечего; выбрасываем только выключенные.
+// Формат совпадает, переводить нечего. Выбрасываем выключенные и ссылки
+// на категории, которых нет в наших справочниках (иначе ядро упадёт).
+// Правило, у которого не осталось ни одного условия, выбрасываем целиком:
+// оно совпало бы со всем подряд.
 func decodeRule(raw json.RawMessage) map[string]any {
 	var rule map[string]any
 	if err := json.Unmarshal(raw, &rule); err != nil {
@@ -340,23 +332,72 @@ func decodeRule(raw json.RawMessage) map[string]any {
 	delete(rule, "remarks")
 	delete(rule, "id")
 	delete(rule, "locked")
+
+	for _, key := range []string{"domain", "ip"} {
+		values, ok := rule[key].([]any)
+		if !ok {
+			continue
+		}
+		kept := knownGeoOnly(values)
+		if len(kept) == 0 {
+			delete(rule, key)
+		} else {
+			rule[key] = kept
+		}
+	}
+	hasCondition := false
+	for key := range rule {
+		if key != "outboundTag" && key != "balancerTag" {
+			hasCondition = true
+			break
+		}
+	}
+	if !hasCondition {
+		return nil
+	}
+
 	rule["type"] = "field"
 	return rule
 }
 
-// directDomains — домены, которые идут мимо VPN.
+// knownGeoOnly — значения без ссылок на отсутствующие категории.
+func knownGeoOnly(values []any) []any {
+	out := []any{}
+	for _, v := range values {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		if (strings.HasPrefix(s, "geosite:") || strings.HasPrefix(s, "geoip:")) && !geoKnown(s) {
+			logf("правило ссылается на неизвестный справочник: %s", s)
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// directDomains — домены, которые идут мимо VPN: их имена спрашиваем у
+// российского резолвера. Отсутствующие категории отбрасываем и здесь —
+// в настройках DNS они роняют ядро точно так же, как в правилах.
 func directDomains(routing *routingAnswer) []string {
 	out := []string{}
-	if routing == nil || !ruDirect() {
-		return out
-	}
-	for _, raw := range routing.RuDirect {
-		var rule struct {
-			OutboundTag string   `json:"outboundTag"`
-			Domain      []string `json:"domain"`
-		}
-		if json.Unmarshal(raw, &rule) == nil && rule.OutboundTag == "direct" {
-			out = append(out, rule.Domain...)
+	for _, group := range routing.activeGroups() {
+		for _, raw := range group.Rules {
+			var rule struct {
+				OutboundTag string `json:"outboundTag"`
+				Domain      []any  `json:"domain"`
+				Enabled     *bool  `json:"enabled"`
+			}
+			if json.Unmarshal(raw, &rule) != nil || rule.OutboundTag != "direct" {
+				continue
+			}
+			if rule.Enabled != nil && !*rule.Enabled {
+				continue
+			}
+			for _, d := range knownGeoOnly(rule.Domain) {
+				out = append(out, d.(string))
+			}
 		}
 	}
 	return out
