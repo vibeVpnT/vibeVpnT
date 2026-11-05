@@ -26,7 +26,7 @@ from pathlib import Path
 # Запасной список — слепок с apps/routing/default.json бэкенда.
 FALLBACK = """
 geoip:private geoip:ru
-geosite:private geosite:tld-ru geosite:category-ru
+geosite:private geosite:category-ads-all geosite:tld-ru geosite:category-ru
 geosite:category-bank-ru geosite:category-ecommerce-ru
 geosite:category-education-ru geosite:category-entertainment-ru
 geosite:category-forums-ru geosite:category-gov-ru

@@ -241,8 +241,15 @@ func buildConfig(s server, routing *routingAnswer) ([]byte, error) {
 		if len(routing.Settings.DirectDNS) > 0 {
 			directDNS = routing.Settings.DirectDNS
 		}
-		// Порядок решает: выигрывает первое совпавшее правило, поэтому
-		// «напрямую» идёт раньше всего остального.
+		// Порядок решает: выигрывает первое совпавшее правило. Первой —
+		// блокировка рекламы, иначе рекламу с российских доменов (Яндекс,
+		// VK) перехватило бы «напрямую»; затем «напрямую» — раньше
+		// всего остального.
+		for _, raw := range routing.AdsBlock {
+			if rule := decodeRule(raw); rule != nil {
+				rules = append(rules, rule)
+			}
+		}
 		if ruDirect() {
 			for _, raw := range routing.RuDirect {
 				if rule := decodeRule(raw); rule != nil {

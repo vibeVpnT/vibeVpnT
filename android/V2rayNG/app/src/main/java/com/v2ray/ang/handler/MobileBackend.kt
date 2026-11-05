@@ -832,6 +832,7 @@ object MobileBackend {
     private data class RoutingResponse(
         val version: Int = 0,
         val settings: RoutingSettings? = null,
+        val ads_block: List<RulesetItem>? = null,
         val ru_direct: List<RulesetItem>? = null,
         val common: List<RulesetItem>? = null,
     )
@@ -901,7 +902,10 @@ object MobileBackend {
             return@withContext false
         }
 
+        // Блокировка рекламы — первой: иначе рекламу с российских доменов
+        // (Яндекс, VK) раньше перехватило бы «напрямую».
         val rules = buildList {
+            addAll(answer.ads_block.orEmpty())
             if (ruDirectEnabled) addAll(answer.ru_direct.orEmpty())
             addAll(answer.common.orEmpty())
         }.mapNotNull(::sanitizeRule)
@@ -961,6 +965,7 @@ object MobileBackend {
      */
     private val ALLOWED_GEO = setOf(
         "geosite:private",
+        "geosite:category-ads-all",
         "geosite:tld-ru",
         "geosite:category-ru",
         "geosite:category-gov-ru",

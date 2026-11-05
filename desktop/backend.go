@@ -310,6 +310,7 @@ type routingAnswer struct {
 		DomainStrategy string   `json:"domain_strategy"`
 		DirectDNS      []string `json:"direct_dns"`
 	} `json:"settings"`
+	AdsBlock []json.RawMessage `json:"ads_block"`
 	RuDirect []json.RawMessage `json:"ru_direct"`
 	Common   []json.RawMessage `json:"common"`
 }
