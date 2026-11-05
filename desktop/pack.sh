@@ -103,15 +103,24 @@ fetch_tunnel() {
 # Дальше обрезаем до того, чем пользуемся: 27 мегабайт превращаются в
 # четыреста килобайт.
 
-fetch_geo() {
-    if [ -f assets/geosite-vv.dat ] && [ -f assets/geoip-vv.dat ]; then return 0; fi
+#
+# Обрезаем на каждой сборке, а не один раз: список категорий берётся из
+# правил, и стоит добавить туда новую, как старый обрезок перестаёт ей
+# соответствовать — категория молча не работала бы в программе (раньше
+# так и было: обрезок, однажды сделанный, больше не пересобирался).
 
-    if [ ! -f assets/geosite.dat ]; then
-        if [ ! -f "$AAR" ]; then
+fetch_geo() {
+    if [ ! -f assets/geosite.dat ] || [ ! -f assets/geoip.dat ]; then
+        if [ -f "$AAR" ]; then
+            unzip -o -q -j "$AAR" assets/geosite.dat assets/geoip.dat -d assets
+        elif [ -f assets/geosite-vv.dat ] && [ -f assets/geoip-vv.dat ]; then
+            echo "  ВНИМАНИЕ: нет ни полных справочников, ни $AAR —" >&2
+            echo "  беру прежний обрезок, новых категорий из правил в нём может не быть" >&2
+            return 0
+        else
             echo "нет $AAR — справочники брать неоткуда" >&2
             exit 1
         fi
-        unzip -o -q -j "$AAR" assets/geosite.dat assets/geoip.dat -d assets
     fi
 
     # Список категорий — из тех же правил, что раздаёт бэкенд: так он не
