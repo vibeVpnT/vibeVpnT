@@ -624,7 +624,12 @@
     <string name="account_welcome_title">Добро пожаловать</string>
     <string name="account_start_title">Добро пожаловать в %1$s</string>
     <string name="account_start_text">Чтобы подключиться, заведите аккаунт: это бесплатно и без почты. Аккаунт уже есть? Войдите ниже.</string>
-    <string name="account_start_later">Позже</string>
+    <string name="account_start_later">Пропустить</string>
+    <string name="signin_required_title">Войдите в аккаунт</string>
+    <string name="signin_required_renew">Подписка привязана к аккаунту. Войдите по ID аккаунта или получите пробный период.</string>
+    <string name="signin_required_support">Чат поддержки работает внутри аккаунта. Войдите или напишите нам в Telegram.</string>
+    <string name="signin_required_action">Войти или создать аккаунт</string>
+    <string name="signin_required_telegram">Написать в Telegram</string>
     <string name="account_welcome_trial">Попробовать бесплатно</string>
     <string name="account_number_title">Номер вашего аккаунта</string>
     <string name="account_number_text">Это единственный способ войти на другом устройстве или после переустановки. Сохраните его в надёжном месте.</string>

@@ -498,10 +498,11 @@ class MainViewModel(
         _uiState.update { it.copy(renewReminder = null) }
     }
 
-    /** Отказался. Предложим снова при следующем запуске: без подписки
-     *  приложению всё равно нечего делать. */
+    /** Отказался от триала — навсегда: окно больше не всплывает, триал
+     *  остаётся кнопкой в «Аккаунте». */
     fun dismissTrialOffer() {
         _uiState.update { it.copy(trialOffer = null) }
+        viewModelScope.launch(ioDispatcher) { MobileBackend.onboardingSkipped = true }
     }
 
     private fun askBackend(claim: Boolean) {
@@ -523,6 +524,7 @@ class MainViewModel(
             // меню до следующего запуска: человек платил и обнаруживал,
             // что вкладки нет.
             val reachable = result.status != MobileBackend.Status.NETWORK_ERROR
+            val skipped = MobileBackend.onboardingSkipped
 
             _uiState.update {
                 it.copy(
@@ -531,12 +533,12 @@ class MainViewModel(
                     supportEnabled = if (reachable) result.supportEnabled else it.supportEnabled,
                     renewEnabled = if (reachable) result.renewEnabled else it.renewEnabled,
                     renewReminder = if (reachable) renewReminder(result) else it.renewReminder,
-                    trialOffer = if (result.status == MobileBackend.Status.OFFER) {
+                    trialOffer = if (Onboarding.showTrialOffer(result.status, skipped)) {
                         TrialOffer(days = result.trialDays, gb = result.trialGb)
                     } else {
                         null
                     },
-                    accountWelcome = result.status == MobileBackend.Status.NEEDS_ACCOUNT,
+                    accountWelcome = Onboarding.showWelcome(result.status, skipped),
                     // Номер навязываем, пока его не сохранили: без него
                     // не войти ни на другом устройстве, ни после сброса.
                     numberToSave = if (reachable && !result.accountConfirmed) {

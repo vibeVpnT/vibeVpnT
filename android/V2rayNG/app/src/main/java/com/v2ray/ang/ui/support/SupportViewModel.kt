@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.handler.MobileBackend
 import com.v2ray.ang.ui.base.BaseViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Переписка с поддержкой.
@@ -33,6 +35,8 @@ class SupportViewModel(application: Application) : BaseViewModel(application) {
         val sending: Boolean = false,
         /** До бэкенда не достучались: показываем это, а не пустой чат. */
         val offline: Boolean = false,
+        /** Аккаунта нет: чат живёт в аккаунте — зовём войти. */
+        val needsAccount: Boolean = false,
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -43,6 +47,10 @@ class SupportViewModel(application: Application) : BaseViewModel(application) {
     /** Открытие экрана: хвост переписки, как в любом мессенджере. */
     fun load() {
         viewModelScope.launch {
+            if (withContext(Dispatchers.IO) { MobileBackend.isSignedOut(getApplication()) }) {
+                _uiState.update { it.copy(loading = false, offline = false, needsAccount = true) }
+                return@launch
+            }
             val page = MobileBackend.supportMessages(getApplication())
             _uiState.update {
                 if (page == null) {

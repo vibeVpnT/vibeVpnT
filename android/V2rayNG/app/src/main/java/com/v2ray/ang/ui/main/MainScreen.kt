@@ -253,8 +253,8 @@ fun MainScreen(
             )
 
             MainTab.Settings -> SettingsTab(
-                supportEnabled = uiState.supportEnabled,
-                renewEnabled = uiState.renewEnabled,
+                supportEnabled = Onboarding.showAccountItem(uiState.supportEnabled, uiState.backendStatus),
+                renewEnabled = Onboarding.showAccountItem(uiState.renewEnabled, uiState.backendStatus),
                 ruDirect = uiState.ruDirect,
                 onRuDirectChange = mainViewModel::setRuDirect,
                 onNavigate = onNavigate,

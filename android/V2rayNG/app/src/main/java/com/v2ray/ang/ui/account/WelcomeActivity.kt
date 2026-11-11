@@ -29,7 +29,10 @@ class WelcomeActivity : BaseComponentActivity() {
             viewModel = viewModel,
             onLinkClick = { linkLauncher.launch(Intent(this, LinkActivity::class.java)) },
             onDone = { finish() },
-            onLater = { finish() },
+            onLater = {
+                viewModel.skipOnboarding()
+                finish()
+            },
         )
     }
 }

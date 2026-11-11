@@ -36,6 +36,8 @@ class RenewViewModel(application: Application) : BaseViewModel(application) {
         val loading: Boolean = true,
         /** До бэкенда не достучались. */
         val offline: Boolean = false,
+        /** Аккаунта нет: подписки без него не бывает — зовём войти. */
+        val needsAccount: Boolean = false,
         val state: MobileBackend.RenewState? = null,
         /** Выбран тариф — показываем экран оплаты. */
         val chosen: MobileBackend.Tier? = null,
@@ -52,6 +54,10 @@ class RenewViewModel(application: Application) : BaseViewModel(application) {
 
     fun load() {
         viewModelScope.launch {
+            if (withContext(Dispatchers.IO) { MobileBackend.isSignedOut(getApplication()) }) {
+                _uiState.update { it.copy(loading = false, offline = false, needsAccount = true) }
+                return@launch
+            }
             val answer = MobileBackend.renewState(getApplication())
             _uiState.update {
                 if (answer == null) {

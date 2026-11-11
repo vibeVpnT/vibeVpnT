@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -47,15 +48,17 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.MobileBackend
+import com.v2ray.ang.ui.account.SignInRequiredCard
 import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.ui.compose.Brand
+import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Сколько знаков принимает бэкенд — столько же не даём превысить здесь. */
 private const val MAX_LENGTH = 2000
 
 @Composable
-fun SupportScreen(viewModel: SupportViewModel, onBackClick: () -> Unit) {
+fun SupportScreen(viewModel: SupportViewModel, onBackClick: () -> Unit, onSignIn: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var draft by rememberSaveable { mutableStateOf("") }
@@ -94,6 +97,22 @@ fun SupportScreen(viewModel: SupportViewModel, onBackClick: () -> Unit) {
                 .consumeWindowInsets(innerPadding)
                 .imePadding(),
         ) {
+            // Без аккаунта чата нет: зовём войти, а Telegram оставляем
+            // запасным путём — туда можно написать и без входа.
+            if (state.needsAccount) {
+                val context = LocalContext.current
+                Column(Modifier.padding(16.dp)) {
+                    SignInRequiredCard(
+                        hint = stringResource(R.string.signin_required_support),
+                        onSignIn = onSignIn,
+                        secondary = Brand.supportUrl.takeIf { it.isNotBlank() }?.let { url ->
+                            stringResource(R.string.signin_required_telegram) to { Utils.openUri(context, url) }
+                        },
+                    )
+                }
+                return@Column
+            }
+
             if (state.offline) {
                 Notice(stringResource(R.string.support_offline))
             }

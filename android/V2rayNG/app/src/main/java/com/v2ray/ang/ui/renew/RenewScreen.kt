@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.MobileBackend
+import com.v2ray.ang.ui.account.SignInRequiredCard
 import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.ui.compose.Brand
 import com.v2ray.ang.util.Utils
@@ -54,6 +55,7 @@ fun RenewScreen(
     viewModel: RenewViewModel,
     onBackClick: () -> Unit,
     onPickReceipt: () -> Unit,
+    onSignIn: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -90,6 +92,11 @@ fun RenewScreen(
                 ) {
                     CircularProgressIndicator(color = Brand.accent)
                 }
+
+                state.needsAccount -> SignInRequiredCard(
+                    hint = stringResource(R.string.signin_required_renew),
+                    onSignIn = onSignIn,
+                )
 
                 state.offline || state.state == null -> Card {
                     Title(stringResource(R.string.renew_offline_title))

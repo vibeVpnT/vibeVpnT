@@ -250,6 +250,19 @@ object MobileBackend {
             MmkvManager.encodeSettings(PREF_MIGRATED, value)
         }
 
+    /**
+     * Человек отказался от входа и триала раз и навсегда: «Пропустить» на
+     * первом экране или «Не сейчас» в окне триала. Больше сами их не
+     * показываем — войти и взять триал можно в «Аккаунте».
+     */
+    private const val PREF_ONBOARDING_SKIPPED = "pref_account_onboarding_skipped"
+
+    var onboardingSkipped: Boolean
+        get() = MmkvManager.decodeSettingsBool(PREF_ONBOARDING_SKIPPED, false)
+        set(value) {
+            MmkvManager.encodeSettings(PREF_ONBOARDING_SKIPPED, value)
+        }
+
     /** Вошло ли устройство в аккаунт. */
     val hasSession: Boolean get() = sessionToken.isNotBlank()
 
@@ -494,6 +507,13 @@ object MobileBackend {
      * старинке Android ID: бэкенд принимает и его. null — спрашивать
      * не от чьего имени.
      */
+    /**
+     * Говорить с бэкендом от имени устройства нечем: аккаунта нет, а
+     * старый Android ID уже обменян или не нашёлся. Экраны, которым нужен
+     * аккаунт, показывают тогда «войдите», а не «нет связи».
+     */
+    fun isSignedOut(context: Context): Boolean = isConfigured && owner(context) == null
+
     private fun owner(context: Context): Map<String, Any?>? {
         if (hasSession) return emptyMap()
         if (migrated) return null

@@ -38,6 +38,15 @@ class AccountViewModel(application: Application) : BaseViewModel(application) {
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     /** Вход по номеру. Опечатку ловим здесь, не тратя попыток на сервере. */
+    /**
+     * «Пропустить» на первом экране — навсегда. Пишем сразу, а не в
+     * корутине: экран тут же закрывается, и вместе с ним отменилась бы
+     * запись. MMKV пишет в отображённую память, это не блокирует экран.
+     */
+    fun skipOnboarding() {
+        MobileBackend.onboardingSkipped = true
+    }
+
     fun login(raw: String) {
         if (_uiState.value.busy) return
         if (!MobileBackend.isValidAccountNumber(raw)) {

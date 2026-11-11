@@ -635,7 +635,12 @@
     <string name="account_welcome_title">Welcome</string>
     <string name="account_start_title">Welcome to %1$s</string>
     <string name="account_start_text">To connect, create an account: it is free and needs no email. Already have one? Sign in below.</string>
-    <string name="account_start_later">Later</string>
+    <string name="account_start_later">Skip</string>
+    <string name="signin_required_title">Sign in to your account</string>
+    <string name="signin_required_renew">Your subscription belongs to an account. Sign in with your account ID or get a free trial.</string>
+    <string name="signin_required_support">The support chat lives in your account. Sign in, or message us on Telegram.</string>
+    <string name="signin_required_action">Sign in or create an account</string>
+    <string name="signin_required_telegram">Message us on Telegram</string>
     <string name="account_welcome_trial">Try for free</string>
     <string name="account_number_title">Your account number</string>
     <string name="account_number_text">This number is the only way to sign in on another device or after reinstalling. Save it somewhere safe.</string>

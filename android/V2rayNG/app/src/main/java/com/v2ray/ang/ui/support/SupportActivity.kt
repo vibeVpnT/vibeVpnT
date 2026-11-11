@@ -1,7 +1,9 @@
 package com.v2ray.ang.ui.support
 
+import android.content.Intent
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import com.v2ray.ang.ui.account.AccountActivity
 import com.v2ray.ang.ui.base.BaseComponentActivity
 
 /**
@@ -15,7 +17,14 @@ class SupportActivity : BaseComponentActivity() {
 
     @Composable
     override fun ScreenContent() {
-        SupportScreen(viewModel = viewModel, onBackClick = { finish() })
+        SupportScreen(
+            viewModel = viewModel,
+            onBackClick = { finish() },
+            onSignIn = {
+                startActivity(Intent(this, AccountActivity::class.java))
+                finish()
+            },
+        )
     }
 
     override fun onStop() {

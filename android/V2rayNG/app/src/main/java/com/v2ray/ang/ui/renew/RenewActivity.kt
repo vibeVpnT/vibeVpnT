@@ -1,7 +1,9 @@
 package com.v2ray.ang.ui.renew
 
+import android.content.Intent
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import com.v2ray.ang.ui.account.AccountActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
 
 /**
@@ -23,6 +25,10 @@ class RenewActivity : HelperBaseComponentActivity() {
             // pdf из банка. Поэтому тип файла не ограничиваем.
             onPickReceipt = {
                 launchFileChooser("*/*") { uri -> uri?.let(viewModel::sendReceipt) }
+            },
+            onSignIn = {
+                startActivity(Intent(this, AccountActivity::class.java))
+                finish()
             },
         )
     }
