@@ -12,7 +12,7 @@ V2Box и полностью вынесенным брендом. Ядро — xr
 | id | имя | пакет | бэкенд |
 |---|---|---|---|
 | `aviavp` | aviavp | `online.tforge.aviavp` | `/aviavp` |
-| `proxyvv` | PV | `online.tforge.proxyvv` | `/proxyvv` |
+| `proxyvv` | PV | `vpn.vibe` | `/proxyvv` |
 
 ```bash
 ./build.sh                 # бренд по умолчанию (aviavp)

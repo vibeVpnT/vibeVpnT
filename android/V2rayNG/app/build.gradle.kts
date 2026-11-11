@@ -39,14 +39,14 @@ fun brand(key: String): String = brandProps.getProperty(key)
 val brandSlug: String = (brandProps.getProperty("brand.slug") ?: brand("brand.name"))
     .lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
-// Магазин, для которого сборка: -Pstore=appgallery или переменная STORE.
+// Магазин, для которого сборка: -Pstore=appgallery|play или переменная STORE.
 // Пусто — apk для раздачи с сайта. В сборке для магазина нет обновления
 // из самого приложения (обновляет магазин), а продление ведёт на сайт.
 val storeId: String = ((project.findProperty("store") as String?)
     ?: System.getenv("STORE")
     ?: "").trim().lowercase()
-if (storeId.isNotEmpty() && storeId != "appgallery") {
-    throw GradleException("неизвестный магазин '$storeId': есть только appgallery")
+if (storeId.isNotEmpty() && storeId !in setOf("appgallery", "play")) {
+    throw GradleException("неизвестный магазин '$storeId': есть appgallery и play")
 }
 
 // Плагин Firebase подключаем только тогда, когда у бренда есть его

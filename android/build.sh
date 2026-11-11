@@ -7,6 +7,8 @@
 #   BRAND=proxyvv ./build.sh        — другое приложение из этого же кода
 #   STORE=appgallery BRAND=proxyvv ./build.sh — сборка для AppGallery: без
 #                                     обновления из приложения, продление на сайте
+#   FORMAT=aab STORE=play BRAND=proxyvv ./build.sh — бандл для Google Play:
+#                                     новые приложения Play принимает только в .aab
 #
 # Ключ подписи живёт вне репозитория: /opt/build/keystore. Потерять его
 # нельзя — без него не выпустить обновление поверх установленного.
@@ -19,6 +21,7 @@ KS=${KEYSTORE_DIR:-/opt/build/keystore}
 ABI=${ABI:-arm64-v8a}
 BRAND=${BRAND:-aviavp}
 STORE=${STORE:-}
+FORMAT=${FORMAT:-apk}
 export BRAND STORE
 
 [ -f "$KS/aviavp.jks" ] || { echo "нет ключа подписи в $KS"; exit 1; }
@@ -47,7 +50,11 @@ cd V2rayNG
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 chmod +x gradlew
 
-./gradlew --no-daemon -PABI_FILTERS="$ABI" -Pbrand="$BRAND" -Pstore="$STORE" assembleRelease \
+# Бандл Play сам режет по архитектурам, ABI для него не важен.
+TASK=assembleRelease
+[ "$FORMAT" = aab ] && TASK=bundleRelease
+
+./gradlew --no-daemon -PABI_FILTERS="$ABI" -Pbrand="$BRAND" -Pstore="$STORE" $TASK \
     -Pandroid.injected.signing.store.file="$KS/aviavp.jks" \
     -Pandroid.injected.signing.store.password="$PW" \
     -Pandroid.injected.signing.key.alias=aviavp \
@@ -55,4 +62,8 @@ chmod +x gradlew
 
 echo
 echo "Готово ($BRAND${STORE:+, $STORE}):"
-ls -la app/build/outputs/apk/release/*.apk
+if [ "$FORMAT" = aab ]; then
+    ls -la app/build/outputs/bundle/release/*.aab
+else
+    ls -la app/build/outputs/apk/release/*.apk
+fi
