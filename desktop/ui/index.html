@@ -192,6 +192,16 @@
         <div>Продление сейчас недоступно</div>
         <div class="muted small">Напишите в поддержку — продлят вручную.</div>
       </div>
+
+      <!-- Купон: дни и гигабайты прибавляются к подписке. -->
+      <div class="card about">
+        <div>Купон</div>
+        <div class="muted small">Есть код купона? Дни и гигабайты добавятся к подписке.</div>
+        <input id="coupon" class="field" autocomplete="off" maxlength="32"
+               placeholder="Код купона" onkeydown="if (event.key === 'Enter') redeemCoupon()">
+        <div id="coupon-error" class="error small"></div>
+        <button class="primary wide" onclick="redeemCoupon()">Активировать</button>
+      </div>
     </section>
 
     <!-- Настройки -->

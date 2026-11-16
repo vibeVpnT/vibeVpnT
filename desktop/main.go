@@ -135,6 +135,7 @@ func routes() http.Handler {
 	mux.HandleFunc("/api/account/create", handleAccountCreate)
 	mux.HandleFunc("/api/account/confirm", handleAccountConfirm)
 	mux.HandleFunc("/api/account/trial", handleAccountTrial)
+	mux.HandleFunc("/api/account/coupon", handleAccountCoupon)
 	mux.HandleFunc("/api/account/logout", handleAccountLogout)
 	mux.HandleFunc("/api/connect", handleConnect)
 	mux.HandleFunc("/api/disconnect", handleDisconnect)

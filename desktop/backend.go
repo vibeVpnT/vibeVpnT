@@ -206,6 +206,25 @@ func claimTrial() (*startAnswer, error) {
 	return &out, nil
 }
 
+// couponAnswer — подписка после купона и что с самим купоном.
+type couponAnswer struct {
+	startAnswer
+	CouponStatus string `json:"coupon_status"`
+	Coupon       struct {
+		Days int `json:"days"`
+		GB   int `json:"gb"`
+	} `json:"coupon"`
+}
+
+// redeemCoupon — купон: дни и гигабайты к подписке, без ключа — новый.
+func redeemCoupon(code string) (*couponAnswer, error) {
+	var out couponAnswer
+	if err := postJSON("/api/v1/account/coupon", map[string]any{"code": code}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func confirmNumber() error {
 	return postJSON("/api/v1/account/confirm", map[string]any{}, nil)
 }

@@ -326,6 +326,22 @@ async function claimTrial() {
   if (answer && answer.error) setText($("offer-error"), answer.error);
 }
 
+async function redeemCoupon() {
+  setText($("coupon-error"), "");
+  const code = $("coupon").value.trim();
+  if (!code) {
+    setText($("coupon-error"), "Введите код купона");
+    return;
+  }
+  const answer = await call("/api/account/coupon", { code });
+  if (answer && answer.error) {
+    setText($("coupon-error"), answer.error);
+    return;
+  }
+  $("coupon").value = "";
+  loadRenew();
+}
+
 function toggleNumber() {
   numberShown = !numberShown;
   setText($("settings-number"), numberShown && current ? current.account_number : "•••• •••• •••• ••••");

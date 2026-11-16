@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -113,6 +114,51 @@ func handleAccountTrial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setNotice("Пробный период включён")
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleAccountCoupon — купон из вкладки «Подписка».
+func handleAccountCoupon(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Code string `json:"code"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in)
+	code := strings.TrimSpace(in.Code)
+	if code == "" {
+		writeJSON(w, map[string]any{"ok": false, "error": "Введите код купона"})
+		return
+	}
+
+	setBusy("Активирую купон…")
+	defer setBusy("")
+
+	answer, err := redeemCoupon(code)
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	switch answer.CouponStatus {
+	case "redeemed":
+	case "not_found":
+		writeJSON(w, map[string]any{"ok": false, "error": "Такого купона нет или он больше не действует"})
+		return
+	case "already_used":
+		writeJSON(w, map[string]any{"ok": false, "error": "Этот купон вы уже активировали"})
+		return
+	default:
+		writeJSON(w, map[string]any{"ok": false, "error": first(answer.Message, "Купон не активирован")})
+		return
+	}
+
+	applySubscription(&answer.startAnswer)
+	var gift []string
+	if answer.Coupon.Days > 0 {
+		gift = append(gift, fmt.Sprintf("+%d дн.", answer.Coupon.Days))
+	}
+	if answer.Coupon.GB > 0 {
+		gift = append(gift, fmt.Sprintf("+%d ГБ", answer.Coupon.GB))
+	}
+	setNotice("Купон активирован: " + strings.Join(gift, ", "))
 	writeJSON(w, map[string]any{"ok": true})
 }
 
