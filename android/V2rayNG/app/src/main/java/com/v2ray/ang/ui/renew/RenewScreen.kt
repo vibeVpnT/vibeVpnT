@@ -17,6 +17,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -103,13 +112,21 @@ fun RenewScreen(
                     Hint(stringResource(R.string.renew_offline_hint))
                 }
 
-                else -> Content(
-                    state = state,
-                    onPickTier = viewModel::pickTier,
-                    onBack = viewModel::backToTiers,
-                    onPay = { url -> Utils.openUri(context, url) },
-                    onPickReceipt = onPickReceipt,
-                )
+                else -> {
+                    Content(
+                        state = state,
+                        onPickTier = viewModel::pickTier,
+                        onBack = viewModel::backToTiers,
+                        onPay = { url -> Utils.openUri(context, url) },
+                        onPickReceipt = onPickReceipt,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    CouponCard(
+                        busy = state.couponBusy,
+                        result = state.coupon,
+                        onRedeem = viewModel::redeemCoupon,
+                    )
+                }
             }
 
             state.failureText.takeIf { it.isNotBlank() }?.let { text ->
@@ -377,6 +394,79 @@ private fun PayCard(
     TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.renew_back), color = Brand.onDarkMuted, fontSize = 14.sp)
     }
+}
+
+@Composable
+private fun CouponCard(
+    busy: Boolean,
+    result: MobileBackend.CouponResult?,
+    onRedeem: (String) -> Unit,
+) {
+    var code by rememberSaveable { mutableStateOf("") }
+
+    // Получилось — поле очищаем, чтобы не активировать тот же код снова.
+    LaunchedEffect(result) {
+        if (result?.outcome == MobileBackend.CouponOutcome.REDEEMED) code = ""
+    }
+
+    Card {
+        Title(stringResource(R.string.coupon_title))
+        Hint(stringResource(R.string.coupon_hint))
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = code,
+            onValueChange = { code = it.take(32) },
+            placeholder = { Text(stringResource(R.string.coupon_placeholder), color = Brand.onDarkMuted) },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Brand.onDark,
+                unfocusedTextColor = Brand.onDark,
+                focusedBorderColor = Brand.accent,
+                unfocusedBorderColor = Brand.divider,
+                cursorColor = Brand.accent,
+            ),
+            enabled = !busy,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Characters,
+                autoCorrectEnabled = false,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { onRedeem(code) }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        result?.let { Hint(couponText(it)) }
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { onRedeem(code) },
+            enabled = !busy && code.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Brand.accentMuted,
+                contentColor = Brand.accent,
+            ),
+        ) {
+            Text(
+                stringResource(if (busy) R.string.coupon_busy else R.string.coupon_action),
+                fontSize = 15.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun couponText(result: MobileBackend.CouponResult): String = when (result.outcome) {
+    MobileBackend.CouponOutcome.REDEEMED -> {
+        val gift = buildList {
+            if (result.days > 0) add("+" + daysWord(result.days))
+            if (result.gb > 0) add("+" + result.gb + " ГБ")
+        }.joinToString(", ")
+        stringResource(R.string.coupon_done, gift)
+    }
+    MobileBackend.CouponOutcome.NOT_FOUND -> stringResource(R.string.coupon_not_found)
+    MobileBackend.CouponOutcome.ALREADY_USED -> stringResource(R.string.coupon_already_used)
+    MobileBackend.CouponOutcome.SIGNED_OUT -> stringResource(R.string.coupon_signed_out)
+    MobileBackend.CouponOutcome.NETWORK_ERROR -> stringResource(R.string.coupon_offline)
 }
 
 // --- Мелочи вёрстки ---------------------------------------------------------

@@ -45,6 +45,9 @@ class RenewViewModel(application: Application) : BaseViewModel(application) {
         /** Что сказать про последнюю неудачу: своим текстом или чужим. */
         val failure: Failure = Failure.NONE,
         val failureText: String = "",
+        /** Купон: идёт запрос и чем закончился последний. */
+        val couponBusy: Boolean = false,
+        val coupon: MobileBackend.CouponResult? = null,
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -132,6 +135,17 @@ class RenewViewModel(application: Application) : BaseViewModel(application) {
 
                 else -> _uiState.update { it.copy(sending = false, failure = Failure.OFFLINE) }
             }
+        }
+    }
+
+    /** Купон: дни и ГБ к подписке. Получилось — перечитываем экран. */
+    fun redeemCoupon(code: String) {
+        if (code.isBlank() || _uiState.value.couponBusy) return
+        _uiState.update { it.copy(couponBusy = true, coupon = null) }
+        viewModelScope.launch {
+            val result = MobileBackend.redeemCoupon(getApplication(), code)
+            _uiState.update { it.copy(couponBusy = false, coupon = result) }
+            if (result.outcome == MobileBackend.CouponOutcome.REDEEMED) load()
         }
     }
 

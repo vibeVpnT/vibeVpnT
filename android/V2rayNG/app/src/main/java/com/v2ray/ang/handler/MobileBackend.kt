@@ -1170,6 +1170,58 @@ object MobileBackend {
             ?.takeIf { it.status == "ok" }
     }
 
+    /** Чем закончился ввод купона. */
+    enum class CouponOutcome { REDEEMED, NOT_FOUND, ALREADY_USED, SIGNED_OUT, NETWORK_ERROR }
+
+    data class CouponResult(
+        val outcome: CouponOutcome,
+        /** Что купон дал: дни и гигабайты (0 — этой части нет). */
+        val days: Int = 0,
+        val gb: Int = 0,
+    )
+
+    private data class CouponGift(val code: String = "", val days: Int = 0, val gb: Int = 0)
+
+    private data class CouponResponse(
+        val status: String? = null,
+        val coupon_status: String? = null,
+        val coupon: CouponGift? = null,
+        val message: String? = null,
+    )
+
+    private const val COUPON_PATH = "/api/v1/account/coupon"
+
+    /**
+     * Купон: дни и гигабайты прибавляются к подписке, а без ключа бэкенд
+     * выдаёт новый. Работает только с аккаунтом. После активации
+     * подписка перечитывается — подтянутся новый срок и серверы.
+     */
+    suspend fun redeemCoupon(context: Context, code: String): CouponResult =
+        withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext CouponResult(CouponOutcome.NETWORK_ERROR)
+        when (ensureSession(context)) {
+            SessionState.OFFLINE -> return@withContext CouponResult(CouponOutcome.NETWORK_ERROR)
+            SessionState.NONE -> return@withContext CouponResult(CouponOutcome.SIGNED_OUT)
+            SessionState.READY -> Unit
+        }
+        val answer = authorizedPost(COUPON_PATH, mapOf("code" to code.trim()), CouponResponse::class.java)
+            ?: return@withContext CouponResult(CouponOutcome.NETWORK_ERROR)
+
+        when {
+            answer.status == "unauthorized" -> CouponResult(CouponOutcome.SIGNED_OUT)
+            answer.coupon_status == "not_found" -> CouponResult(CouponOutcome.NOT_FOUND)
+            answer.coupon_status == "already_used" -> CouponResult(CouponOutcome.ALREADY_USED)
+            answer.coupon_status == "redeemed" -> {
+                runCatching { provision(context, claim = false) }
+                CouponResult(CouponOutcome.REDEEMED, answer.coupon?.days ?: 0, answer.coupon?.gb ?: 0)
+            }
+            else -> {
+                LogUtil.w(AppConfig.TAG, "Купон: ${answer.status} ${answer.message}")
+                CouponResult(CouponOutcome.NETWORK_ERROR)
+            }
+        }
+    }
+
     /**
      * Чек об оплате. Файл любой: снимок экрана, фотография, pdf из банка.
      *

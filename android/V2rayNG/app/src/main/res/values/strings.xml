@@ -709,6 +709,16 @@
     <string name="renew_receipt_sending">Sending the receipt…</string>
     <string name="renew_receipt_too_big">The file is over 50 MB — send a smaller receipt.</string>
     <string name="renew_receipt_unreadable">The file could not be read. Try another one.</string>
+    <string name="coupon_title">Coupon</string>
+    <string name="coupon_hint">Have a coupon code? The days and gigabytes will be added to your subscription.</string>
+    <string name="coupon_placeholder">Coupon code</string>
+    <string name="coupon_action">Redeem</string>
+    <string name="coupon_busy">Checking…</string>
+    <string name="coupon_done">Coupon redeemed: %1$s</string>
+    <string name="coupon_not_found">No such coupon, or it is no longer valid.</string>
+    <string name="coupon_already_used">You have already redeemed this coupon.</string>
+    <string name="coupon_signed_out">Sign in to your account to redeem a coupon.</string>
+    <string name="coupon_offline">Couldn\'t reach the server. Try again in a minute.</string>
     <string name="renew_back">Back to plans</string>
     <string name="renew_offline_title">The server is not responding</string>
     <string name="renew_offline_hint">Try again later. You do not need the VPN connected for this.</string>

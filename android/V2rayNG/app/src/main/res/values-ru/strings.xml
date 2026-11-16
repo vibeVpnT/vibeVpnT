@@ -695,6 +695,16 @@
     <string name="renew_receipt_sending">Отправляем чек…</string>
     <string name="renew_receipt_too_big">Файл больше 50 МБ — пришлите чек поменьше.</string>
     <string name="renew_receipt_unreadable">Файл не прочитался. Попробуйте выбрать другой.</string>
+    <string name="coupon_title">Купон</string>
+    <string name="coupon_hint">Есть код купона? Дни и гигабайты добавятся к подписке.</string>
+    <string name="coupon_placeholder">Код купона</string>
+    <string name="coupon_action">Активировать</string>
+    <string name="coupon_busy">Проверяем…</string>
+    <string name="coupon_done">Купон активирован: %1$s</string>
+    <string name="coupon_not_found">Такого купона нет или он больше не действует.</string>
+    <string name="coupon_already_used">Этот купон вы уже активировали.</string>
+    <string name="coupon_signed_out">Чтобы активировать купон, войдите в аккаунт.</string>
+    <string name="coupon_offline">Не достучались до сервера. Попробуйте через минуту.</string>
     <string name="renew_back">Назад к тарифам</string>
     <string name="renew_offline_title">Сервер не отвечает</string>
     <string name="renew_offline_hint">Попробуйте позже. Подключение к VPN для этого не нужно.</string>
